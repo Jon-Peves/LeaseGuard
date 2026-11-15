@@ -100,6 +100,10 @@ async function press(label: string, within?: ReactTestInstance) {
     target!.props.onPress();
   });
 }
+async function acceptLandlordConsent() {
+  await press('I agree to the privacy and consent policy.');
+  await press('Accept and continue');
+}
 async function signIn(user: User) {
   jest.mocked(auth.login).mockResolvedValueOnce(user);
   const screen = app.root.findByType(LoginScreen);
@@ -113,6 +117,7 @@ it.each([tenant, landlord])(
   'routes a restored $role session to its dashboard',
   async user => {
     await mount(user);
+    if (user.role === 'landlord') await acceptLandlordConsent();
     expect(navigation.getCurrentRoute()?.name).toBe(
       user.role === 'tenant' ? 'Home' : 'Dashboard',
     );
@@ -144,6 +149,8 @@ it('routes repeated logins, clears logout history, and does not leak demo progre
   expect(navigation.getCurrentRoute()?.name).toBe('Login');
   expect(navigation.canGoBack()).toBe(false);
   await signIn(landlord);
+  expect(navigation.getCurrentRoute()?.name).toBe('Consent');
+  await acceptLandlordConsent();
   expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
   await press('Settings');
   await press('Log out');
@@ -158,6 +165,7 @@ it('routes repeated logins, clears logout history, and does not leak demo progre
 });
 it('shows logout failures and permits a retry', async () => {
   await mount(landlord);
+  await acceptLandlordConsent();
   jest
     .mocked(auth.logout)
     .mockRejectedValueOnce(new ApiError('Unable to reach LeaseGuard.'));
@@ -390,6 +398,7 @@ it('keeps inspection progress during session revalidation', async () => {
 it('does not restore a session while logout is pending', async () => {
   const listener = jest.spyOn(AppState, 'addEventListener');
   await mount(landlord);
+  await acceptLandlordConsent();
   let resolve!: () => void;
   jest.mocked(auth.logout).mockImplementationOnce(
     () =>

@@ -9,10 +9,17 @@ import AIInspectionReviewScreen from '../screens/landlord/AIInspectionReviewScre
 import ConditionHistoryScreen from '../screens/landlord/ConditionHistoryScreen';
 import LandlordDashboardScreen from '../screens/landlord/LandlordDashboardScreen';
 import ScheduleInspectionScreen from '../screens/landlord/ScheduleInspectionScreen';
+import EditUnitScreen from '../screens/landlord/EditUnitScreen';
+import LandlordConsentScreen from '../screens/landlord/LandlordConsentScreen';
+import {
+  LandlordDemoProvider,
+  useLandlordDemo,
+} from '../context/LandlordDemoContext';
 import PrivacyPolicyScreen from '../screens/shared/PrivacyPolicyScreen';
 import ProfileScreen from '../screens/shared/ProfileScreen';
 
 import type {
+  LandlordConsentStackParamList,
   LandlordSettingsStackParamList,
   LandlordStackParamList,
   LandlordTabParamList,
@@ -22,6 +29,8 @@ const Tab = createBottomTabNavigator<LandlordTabParamList>();
 const Stack = createNativeStackNavigator<LandlordStackParamList>();
 const SettingsStack =
   createNativeStackNavigator<LandlordSettingsStackParamList>();
+const ConsentStack =
+  createNativeStackNavigator<LandlordConsentStackParamList>();
 function HomeStack() {
   return (
     <Stack.Navigator
@@ -40,6 +49,7 @@ function HomeStack() {
         name="AIInspectionReview"
         component={AIInspectionReviewScreen}
       />
+      <Stack.Screen name="EditUnit" component={EditUnitScreen} />
     </Stack.Navigator>
   );
 }
@@ -84,7 +94,26 @@ const homeOptions = { title: 'Home' };
 const historyOptions = { title: 'History' };
 const settingsOptions = { title: 'Settings' };
 
-export default function LandlordNavigator() {
+function ConsentGate() {
+  return (
+    <ConsentStack.Navigator screenOptions={{ headerShown: false }}>
+      <ConsentStack.Screen name="Consent">
+        {({ navigation }) => (
+          <LandlordConsentScreen
+            onReadPolicy={() => navigation.navigate('ConsentPolicy')}
+          />
+        )}
+      </ConsentStack.Screen>
+      <ConsentStack.Screen name="ConsentPolicy" component={PrivacyPolicyScreen} />
+    </ConsentStack.Navigator>
+  );
+}
+
+function LandlordTabs() {
+  const { consented } = useLandlordDemo();
+  if (!consented) {
+    return <ConsentGate />;
+  }
   return (
     <Tab.Navigator
       initialRouteName="HomeStack"
@@ -102,5 +131,17 @@ export default function LandlordNavigator() {
         options={settingsOptions}
       />
     </Tab.Navigator>
+  );
+}
+
+export default function LandlordNavigator({
+  initialConsented,
+}: {
+  initialConsented?: boolean;
+}) {
+  return (
+    <LandlordDemoProvider initialConsented={initialConsented}>
+      <LandlordTabs />
+    </LandlordDemoProvider>
   );
 }

@@ -26,6 +26,8 @@ import UnitChip from '../src/components/UnitChip';
 import LoginScreen from '../src/screens/auth/LoginScreen';
 import LandlordDashboardScreen from '../src/screens/landlord/LandlordDashboardScreen';
 import AddPropertyScreen from '../src/screens/landlord/AddPropertyScreen';
+import EditUnitScreen from '../src/screens/landlord/EditUnitScreen';
+import AddAreaSheet from '../src/screens/landlord/AddAreaSheet';
 import ScheduleInspectionScreen from '../src/screens/landlord/ScheduleInspectionScreen';
 import AIInspectionReviewScreen from '../src/screens/landlord/AIInspectionReviewScreen';
 import ConditionHistoryScreen from '../src/screens/landlord/ConditionHistoryScreen';
@@ -69,7 +71,7 @@ afterEach(async () => {
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
-async function mount(user: User | null = landlord) {
+async function mount(user: User | null = landlord, consent = true) {
   jest.mocked(auth.getSession).mockResolvedValue(user);
   await act(async () => {
     app = create(
@@ -84,6 +86,26 @@ async function mount(user: User | null = landlord) {
   });
   await act(async () => app.root.findByType(Image).props.onLoadEnd());
   await act(async () => jest.advanceTimersByTime(1500));
+  if (consent && user?.role === 'landlord') await acceptConsent();
+}
+async function acceptConsent() {
+  await press('I agree to the privacy and consent policy.');
+  await press('Accept and continue');
+}
+async function go(route: keyof LandlordStackParamList) {
+  await act(async () => navigation.navigate(route as never));
+}
+async function addSampleProperty(email = 'alyssa.patel@example.com') {
+  await press('+ Add property');
+  const form = app.root.findByType(AddPropertyScreen);
+  await fill(form, {
+    'Property address': '18 Cedar Ave, Farmingdale, NY',
+    Unit: '1A',
+    Bedrooms: '1',
+    Bathrooms: '1',
+    'Tenant email': email,
+  });
+  await press(email ? 'Save & send invite' : 'Save property', form);
 }
 function json() {
   return JSON.stringify(app.toJSON());
@@ -112,27 +134,30 @@ async function fill(scope: ReactTestInstance, values: Record<string, string>) {
   });
 }
 
-it('logs a landlord in, shows the authenticated name, and labels sample records', async () => {
+it('asks a landlord for consent before showing the empty dashboard', async () => {
   await mount(null);
   jest.mocked(auth.login).mockResolvedValueOnce(landlord);
   const login = app.root.findByType(LoginScreen);
   await fill(login, { Email: landlord.email, Password: 'fixture-password' });
   await act(async () => login.findByType(Button).props.onPress());
+  expect(navigation.getCurrentRoute()?.name).toBe('Consent');
+  const accept = app.root
+    .findAll(n => n.props.accessibilityLabel === 'Accept and continue')
+    .find(n => n.props.accessibilityState);
+  expect(accept?.props.accessibilityState.disabled).toBe(true);
+  await acceptConsent();
   expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
-  expect(json()).toContain('Alex Owner');
+  expect(json()).toContain('Welcome, Alex');
+  expect(json()).toContain('Add your first property');
   expect(json()).not.toContain('Marcus');
-  expect(json()).toContain('Sample records and dates');
   expect(navigation.canGoBack()).toBe(false);
   expect(
-    app.root
-      .findByType(LandlordDashboardScreen)
-      .findByType(Header)
-      .findAllByType(NotificationBell),
+    app.root.findByType(LandlordDashboardScreen).findAllByType(NotificationBell),
   ).toHaveLength(1);
 });
 it('falls back safely when the account name is blank', async () => {
   await mount({ ...landlord, name: '  ' });
-  expect(json()).toContain(landlord.email);
+  expect(json()).toContain(`Welcome, ${landlord.email}`);
 });
 it.each([landlord, tenant])(
   'restores $role sessions and preserves role-specific navbar items',
@@ -153,11 +178,11 @@ it.each([landlord, tenant])(
     expect(settings.findAllByType(BackButton)).toHaveLength(0);
   },
 );
-it('validates property fields and reports a demo without creating or assigning a record', async () => {
+it('validates property fields before saving', async () => {
   await mount();
   await press('+ Add property');
   const form = app.root.findByType(AddPropertyScreen);
-  await press('Preview demo property', form);
+  await press('Save property', form);
   expect(json()).toContain('Enter the property address');
   expect(json()).toContain('Enter a unit name');
   await fill(form, {
@@ -167,49 +192,76 @@ it('validates property fields and reports a demo without creating or assigning a
     Bathrooms: '1.25',
     'Tenant email': 'invalid',
   });
-  await press('Preview demo property', form);
+  await press('Save & send invite', form);
   expect(json()).toContain('nonnegative whole number');
   expect(json()).toContain('half increments');
-  expect(alert).not.toHaveBeenCalled();
-  await fill(form, { Bedrooms: '0', Bathrooms: '1.5' });
-  await act(async () =>
-    form
-      .findAllByProps({ accessibilityLabel: 'Assign tenant to this unit' })
-      .find(n => n.props.onValueChange)!
-      .props.onValueChange(false),
-  );
-  await press('Preview demo property', form);
-  expect(alert).toHaveBeenLastCalledWith(
-    'Demo property preview',
-    expect.stringContaining('No property or unit was saved'),
-  );
   expect(navigation.getCurrentRoute()?.name).toBe('AddProperty');
   await press('Cancel', form);
   expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
+  expect(json()).toContain('Add your first property');
 });
-it('requires a valid tenant email only when assignment is enabled', async () => {
+it('adds a property, invites the tenant, and walks the dashboard states', async () => {
   await mount();
-  await press('+ Add property');
-  const form = app.root.findByType(AddPropertyScreen);
-  await fill(form, {
-    'Property address': '18 Example St',
-    Unit: '1A',
-    Bedrooms: '2',
-    Bathrooms: '0',
-    'Tenant email': 'invalid',
-  });
-  await press('Preview demo property', form);
-  expect(alert).not.toHaveBeenCalled();
-  await fill(form, { 'Tenant email': 'sample@example.com' });
-  await press('Preview demo property', form);
-  expect(alert).toHaveBeenCalledWith(
-    'Demo property preview',
-    expect.stringContaining('no tenant was assigned'),
-  );
+  await addSampleProperty();
+  expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
+  expect(json()).toContain('Unit 1A added. Invite sent.');
+  expect(json()).toContain('18 Cedar Ave');
+  expect(json()).toContain('PENDING');
+  expect(json()).toContain('Next: record the move-in baseline');
+  await press('Dismiss');
+  expect(json()).not.toContain('Invite sent.');
+  await press('Demo: simulate Alyssa joining');
+  expect(json()).toContain('JOINED');
+  expect(json()).toContain('Alyssa Patel joined Unit 1A');
+  expect(json()).not.toContain('Schedule inspection');
+  await press('Demo: mark baseline recorded');
+  expect(json()).not.toContain('Next: record the move-in baseline');
+  await press('Schedule inspection');
+  expect(navigation.getCurrentRoute()?.name).toBe('ScheduleInspection');
+});
+it('saves a property without a tenant as vacant', async () => {
+  await mount();
+  await addSampleProperty('');
+  expect(json()).toContain('VACANT');
+  expect(json()).toContain('Unit 1A added.');
+});
+it('edits unit areas with the add-area sheet and enforces the minimum', async () => {
+  await mount();
+  await addSampleProperty();
+  await press('Open 18 Cedar Ave');
+  expect(navigation.getCurrentRoute()?.name).toBe('EditUnit');
+  const screen = app.root.findByType(EditUnitScreen);
+  expect(json()).toContain('4 of 10');
+  await press('+ Add area', screen);
+  const sheet = app.root.findByType(AddAreaSheet);
+  expect(sheet.props.visible).toBe(true);
+  await press('Add area', sheet);
+  expect(json()).toContain('Enter an area name.');
+  await press('Entry door', sheet);
+  await press('Add area', sheet);
+  expect(app.root.findByType(AddAreaSheet).props.visible).toBe(false);
+  expect(json()).toContain('5 of 10');
+  for (const area of ['Entry door', 'Living room wall', 'Kitchen sink', 'Bathroom ceiling'])
+    await press(`Remove ${area}`, screen);
+  await press('Save changes', screen);
+  expect(json()).toContain('Keep at least 2 areas.');
+  expect(navigation.getCurrentRoute()?.name).toBe('EditUnit');
+});
+it('saves unit edits back to the dashboard', async () => {
+  await mount();
+  await addSampleProperty();
+  await press('Open 18 Cedar Ave');
+  const screen = app.root.findByType(EditUnitScreen);
+  await fill(screen, { Unit: '2B' });
+  await press('Move Kitchen sink up', screen);
+  await press('Save changes', screen);
+  expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
+  expect(json()).toContain('Unit 2B');
+  expect(json()).toContain('Unit saved.');
 });
 it('validates dates, remote areas, and distinct in-person demo behavior', async () => {
   await mount();
-  await press('Schedule inspection');
+  await go('ScheduleInspection');
   const form = app.root.findByType(ScheduleInspectionScreen);
   await fill(form, { 'Due date (YYYY-MM-DD)': '2027-02-30' });
   await press('Preview demo inspection', form);
@@ -243,7 +295,7 @@ it('validates dates, remote areas, and distinct in-person demo behavior', async 
 });
 it('gives distinct AI demo decisions, opens History, and returns through the nested stack', async () => {
   await mount();
-  await press('2 items need review');
+  await go('AIInspectionReview');
   const screen = app.root.findByType(AIInspectionReviewScreen);
   expect(json()).toContain('PLACEHOLDER');
   expect(json()).toContain('sample findings');
@@ -346,18 +398,10 @@ it('keeps settings switches local, marks unsupported rows unavailable, and handl
 });
 it('shared Header back button returns from inspection results', async () => {
   await mount();
-  await press('2 items need review');
+  await go('AIInspectionReview');
   await press('Go back', app.root.findByType(AIInspectionReviewScreen));
   expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
 });
-it('disables Manage Unit Details instead of advertising a working destination', async () => {
-  await mount();
-  const action = app.root
-    .findAllByType(Button)
-    .find(n => n.props.title === 'Manage unit details');
-  expect(action?.props.disabled).toBe(true);
-});
-
 describe('landlord numeric and calendar validation', () => {
   it.each(['-1', '1.5', 'NaN', '', '9007199254740992'])(
     'rejects invalid bedroom count %s',

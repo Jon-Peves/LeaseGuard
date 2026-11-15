@@ -14,6 +14,12 @@ export type LandlordStackParamList = {
   AddProperty: undefined;
   ScheduleInspection: undefined;
   AIInspectionReview: undefined;
+  EditUnit: { propertyId: string; unitId: string };
+};
+
+export type LandlordConsentStackParamList = {
+  Consent: undefined;
+  ConsentPolicy: undefined;
 };
 
 export type LandlordSettingsStackParamList = {
