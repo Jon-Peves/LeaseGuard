@@ -15,6 +15,7 @@ import {
 import type { LandlordStackParamList } from '../../navigation/types';
 import { colors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import { emailError } from '../../utils/validation';
 import {
   bathroomCountError,
   bedroomCountError,
@@ -25,12 +26,18 @@ type Props = NativeStackScreenProps<LandlordStackParamList, 'EditUnit'>;
 
 export default function EditUnitScreen({ navigation, route }: Props) {
   const { propertyId, unitId } = route.params;
-  const { findUnit, updateUnit, removeTenant } = useLandlordDemo();
+  const { findUnit, updateUnit, removeTenant, sendInvite, cancelInvite } =
+    useLandlordDemo();
   const found = findUnit(propertyId, unitId);
 
   const [name, setName] = useState(found?.unit.name ?? '');
   const [bedrooms, setBedrooms] = useState(found?.unit.bedrooms ?? '');
   const [bathrooms, setBathrooms] = useState(found?.unit.bathrooms ?? '');
+  const [inviteEmail, setInviteEmail] = useState(
+    found?.unit.tenant && found.unit.tenant.status !== 'joined'
+      ? found.unit.tenant.email
+      : '',
+  );
   const [areas, setAreas] = useState(found?.unit.areas ?? []);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -47,6 +54,8 @@ export default function EditUnitScreen({ navigation, route }: Props) {
   const { property, unit } = found;
   const tenant = unit.tenant;
   const tenantFirst = firstName(tenant);
+  const pending = tenant?.status === 'pending' || tenant?.status === 'declined';
+  const declined = tenant?.status === 'declined';
   const errors = {
     name: name.trim() ? undefined : 'Enter a unit name.',
     bedrooms: bedroomCountError(bedrooms),
@@ -55,7 +64,10 @@ export default function EditUnitScreen({ navigation, route }: Props) {
       areas.length < MIN_AREAS
         ? `Keep at least ${MIN_AREAS} areas.`
         : undefined,
+    invite: pending || inviteEmail.trim() ? emailError(inviteEmail) : undefined,
   };
+  const emailChanged =
+    inviteEmail.trim().toLowerCase() !== (tenant?.email ?? '').toLowerCase();
   const show = (error?: string) => (submitted ? error : undefined);
   const atLimit = areas.length >= MAX_AREAS;
 
@@ -77,13 +89,42 @@ export default function EditUnitScreen({ navigation, route }: Props) {
       bathrooms: bathrooms.trim(),
       areas,
     });
+    if ((pending || !tenant) && inviteEmail.trim() && emailChanged) {
+      sendInvite(propertyId, unitId, inviteEmail);
+    }
     navigation.goBack();
+  }
+
+  function resendInvite() {
+    setSubmitted(true);
+    if (errors.invite) return;
+    sendInvite(propertyId, unitId, inviteEmail);
+  }
+
+  function confirmCancelInvite() {
+    Alert.alert(
+      'Cancel invite?',
+      `The invite to ${tenant?.email} will stop working. You can invite someone else later.`,
+      [
+        { text: 'Keep invite', style: 'cancel' },
+        {
+          text: 'Cancel invite',
+          style: 'destructive',
+          onPress: () => {
+            cancelInvite(propertyId, unitId);
+            setInviteEmail('');
+          },
+        },
+      ],
+    );
   }
 
   function confirmRemoveTenant() {
     Alert.alert(
       'Remove tenant?',
-      `${tenant?.name ?? tenant?.email} will lose access to Unit ${unit.name}. Their past photos stay in the unit's history.`,
+      `${tenant?.name ?? tenant?.email} will lose access to Unit ${
+        unit.name
+      }. Their past photos stay in the unit's history.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -136,48 +177,87 @@ export default function EditUnitScreen({ navigation, route }: Props) {
 
         <View style={styles.group}>
           <Text style={styles.label}>Tenant</Text>
-          <View style={[styles.card, styles.tenant]}>
-            <View style={styles.flex}>
-              <Text style={styles.tenantName}>
-                {tenant
-                  ? tenant.status === 'joined'
-                    ? tenant.name
-                    : tenant.email
-                  : 'No tenant'}
+          {tenant?.status === 'joined' ? (
+            <>
+              <View style={[styles.card, styles.tenant]}>
+                <View style={styles.flex}>
+                  <Text style={styles.tenantName}>{tenant.name}</Text>
+                  <Text style={styles.meta}>{tenant.email}</Text>
+                </View>
+                <View style={[styles.pill, styles.pillBrand]}>
+                  <Text style={[styles.pillText, styles.pillTextBrand]}>
+                    JOINED
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.note}>
+                {`Name and email come from ${tenantFirst}'s account.`}
               </Text>
-              {tenant ? (
-                <Text style={styles.meta}>
-                  {tenant.status === 'joined'
-                    ? tenant.email
-                    : `Invite sent ${tenant.invitedOn}`}
-                </Text>
-              ) : null}
-            </View>
-            {tenant ? (
-              <View
-                style={[
-                  styles.pill,
-                  tenant.status === 'joined' ? styles.pillBrand : styles.pillWarn,
-                ]}
-              >
-                <Text
+            </>
+          ) : pending ? (
+            <View style={[styles.card, styles.invite]}>
+              <View style={styles.labelRow}>
+                <Text style={styles.inviteLabel}>Tenant</Text>
+                <View
                   style={[
-                    styles.pillText,
-                    tenant.status === 'joined'
-                      ? styles.pillTextBrand
-                      : styles.pillTextWarn,
+                    styles.pill,
+                    declined ? styles.pillDanger : styles.pillWarn,
                   ]}
                 >
-                  {tenant.status === 'joined' ? 'JOINED' : 'PENDING'}
-                </Text>
+                  <Text
+                    style={[
+                      styles.pillText,
+                      declined ? styles.pillTextDanger : styles.pillTextWarn,
+                    ]}
+                  >
+                    {declined ? 'DECLINED' : 'PENDING'}
+                  </Text>
+                </View>
               </View>
-            ) : null}
-          </View>
-          {tenant?.status === 'joined' ? (
-            <Text style={styles.note}>
-              Name and email come from {tenantFirst}'s account.
-            </Text>
-          ) : null}
+              <Field
+                label="Invited email"
+                value={inviteEmail}
+                onChangeText={setInviteEmail}
+                error={show(errors.invite)}
+                hint={
+                  declined
+                    ? `Declined ${tenant.declinedOn}. Check the email and resend, or invite someone else.`
+                    : `Invite sent ${tenant.invitedOn}. Fix a typo here and we'll send a new invite.`
+                }
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+              />
+              <View style={styles.inviteActions}>
+                <ActionButton
+                  title="Resend invite"
+                  variant="secondary"
+                  compact
+                  onPress={resendInvite}
+                  style={styles.flexButton}
+                />
+                <ActionButton
+                  title="Cancel invite"
+                  variant="dangerOutline"
+                  compact
+                  onPress={confirmCancelInvite}
+                  style={styles.flexButton}
+                />
+              </View>
+            </View>
+          ) : (
+            <Field
+              label="Tenant email"
+              placeholder="tenant@example.com"
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+              error={show(errors.invite)}
+              hint="Optional. Saving sends them an invite to this unit."
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+            />
+          )}
         </View>
 
         <View style={styles.group}>
@@ -204,9 +284,7 @@ export default function EditUnitScreen({ navigation, route }: Props) {
                 >
                   <Icon name="grip" size={18} color="#94A3B8" />
                 </Pressable>
-                <Text style={styles.areaName}>
-                  {`${index + 1}. ${area}`}
-                </Text>
+                <Text style={styles.areaName}>{`${index + 1}. ${area}`}</Text>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Remove ${area}`}
@@ -247,7 +325,12 @@ export default function EditUnitScreen({ navigation, route }: Props) {
         </View>
 
         <ActionButton title="Save changes" onPress={save} />
-        {tenant ? (
+        {pending ? (
+          <Text style={styles.footnote}>
+            {`Once ${tenantFirst} signs up, their name replaces the email and it can't be edited here.`}
+          </Text>
+        ) : null}
+        {tenant?.status === 'joined' ? (
           <ActionButton
             title="Remove tenant from unit"
             variant="danger"
@@ -272,7 +355,12 @@ export default function EditUnitScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 32, gap: 14 },
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 32,
+    gap: 14,
+  },
   row: { flexDirection: 'row', gap: 10 },
   third: { flex: 1 },
   group: { gap: 8 },
@@ -302,12 +390,32 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  tenantName: { fontSize: 15, fontWeight: typography.semibold, color: colors.ink },
+  tenantName: {
+    fontSize: 15,
+    fontWeight: typography.semibold,
+    color: colors.ink,
+  },
   meta: { fontSize: 12, color: colors.muted },
   note: { fontSize: 12, color: colors.muted },
+  invite: { gap: 12, padding: 14 },
+  inviteLabel: {
+    fontSize: 13,
+    fontWeight: typography.medium,
+    color: colors.muted,
+  },
+  inviteActions: { flexDirection: 'row', gap: 10 },
+  flexButton: { flex: 1 },
+  footnote: {
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    color: colors.muted,
+  },
   pill: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10 },
   pillBrand: { backgroundColor: colors.brandTint },
   pillWarn: { backgroundColor: colors.warnBg },
+  pillDanger: { backgroundColor: '#FDECEC' },
+  pillTextDanger: { color: colors.error },
   pillText: { fontSize: 11, fontWeight: typography.bold, letterSpacing: 0.3 },
   pillTextBrand: { color: colors.brand },
   pillTextWarn: { color: colors.warnText },

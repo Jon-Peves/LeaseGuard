@@ -20,6 +20,7 @@ import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { emailError } from '../../utils/validation';
 import { useAuthRequest } from '../../utils/useAuthRequest';
+import { markUnlinked } from '../../data/demoStore';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 export default function RegisterScreen({ navigation }: Props) {
@@ -67,6 +68,7 @@ export default function RegisterScreen({ navigation }: Props) {
       signal =>
         register({ name, email, password, confirmPassword, role }, signal),
       user => {
+        if (user.role === 'tenant') markUnlinked(user.email);
         setPassword('');
         setConfirmPassword('');
         setCreatedEmail(user.email);

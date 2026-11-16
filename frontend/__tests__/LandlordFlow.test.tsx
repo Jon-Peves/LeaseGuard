@@ -11,7 +11,9 @@ import {
 } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert, Image, Text, TextInput } from 'react-native';
+import { launchCamera } from 'react-native-image-picker';
 import { AuthProvider } from '../src/context/AuthContext';
+import { resetDemoStore } from '../src/data/demoStore';
 import RootNavigator from '../src/navigation/RootNavigator';
 import type { LandlordStackParamList } from '../src/navigation/types';
 import type { User } from '../src/types/user';
@@ -59,6 +61,7 @@ let navigation: ReturnType<
 >;
 let alert: jest.SpyInstance;
 beforeEach(() => {
+  resetDemoStore();
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.mocked(auth.getSession).mockReset();
@@ -86,7 +89,7 @@ async function mount(user: User | null = landlord, consent = true) {
   });
   await act(async () => app.root.findByType(Image).props.onLoadEnd());
   await act(async () => jest.advanceTimersByTime(1500));
-  if (consent && user?.role === 'landlord') await acceptConsent();
+  if (consent && user?.role) await acceptConsent();
 }
 async function acceptConsent() {
   await press('I agree to the privacy and consent policy.');
@@ -121,7 +124,9 @@ async function press(label: string, scope: ReactTestInstance = app.root) {
           .some(t => [t.props.children].flat(Infinity).join('') === label),
     );
   expect(target).toBeDefined();
-  await act(async () => { target!.props.onPress(); });
+  await act(async () => {
+    target!.props.onPress();
+  });
 }
 async function fill(scope: ReactTestInstance, values: Record<string, string>) {
   await act(async () => {
@@ -152,7 +157,9 @@ it('asks a landlord for consent before showing the empty dashboard', async () =>
   expect(json()).not.toContain('Marcus');
   expect(navigation.canGoBack()).toBe(false);
   expect(
-    app.root.findByType(LandlordDashboardScreen).findAllByType(NotificationBell),
+    app.root
+      .findByType(LandlordDashboardScreen)
+      .findAllByType(NotificationBell),
   ).toHaveLength(1);
 });
 it('falls back safely when the account name is blank', async () => {
@@ -214,7 +221,27 @@ it('adds a property, invites the tenant, and walks the dashboard states', async 
   expect(json()).toContain('JOINED');
   expect(json()).toContain('Alyssa Patel joined Unit 1A');
   expect(json()).not.toContain('Schedule inspection');
-  await press('Demo: mark baseline recorded');
+  let shot = 0;
+  jest.mocked(launchCamera).mockImplementation(async () => ({
+    assets: [{ uri: `file://photo-${++shot}.jpg` }],
+  }));
+  await press('Record baseline');
+  expect(navigation.getCurrentRoute()?.name).toBe('MoveInTour');
+  expect(json()).toContain('4 areas');
+  await press('Start tour');
+  expect(json()).toContain('Step 1 of 4');
+  expect(json()).toContain('No baseline yet');
+  for (let i = 0; i < 4; i++) await press('Capture photo');
+  expect(navigation.getCurrentRoute()?.name).toBe('ReviewBaseline');
+  expect(json()).toContain('4 of 4 areas done');
+  await press('Retake Kitchen sink');
+  expect(navigation.getCurrentRoute()?.name).toBe('BaselineCapture');
+  await press('Retake photo');
+  expect(navigation.getCurrentRoute()?.name).toBe('ReviewBaseline');
+  expect(launchCamera).toHaveBeenCalledTimes(5);
+  await press('Save baseline');
+  expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
+  expect(json()).toContain('Move-in baseline saved.');
   expect(json()).not.toContain('Next: record the move-in baseline');
   await press('Schedule inspection');
   expect(navigation.getCurrentRoute()?.name).toBe('ScheduleInspection');
@@ -241,7 +268,12 @@ it('edits unit areas with the add-area sheet and enforces the minimum', async ()
   await press('Add area', sheet);
   expect(app.root.findByType(AddAreaSheet).props.visible).toBe(false);
   expect(json()).toContain('5 of 10');
-  for (const area of ['Entry door', 'Living room wall', 'Kitchen sink', 'Bathroom ceiling'])
+  for (const area of [
+    'Entry door',
+    'Living room wall',
+    'Kitchen sink',
+    'Bathroom ceiling',
+  ])
     await press(`Remove ${area}`, screen);
   await press('Save changes', screen);
   expect(json()).toContain('Keep at least 2 areas.');

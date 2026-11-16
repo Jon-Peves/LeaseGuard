@@ -1,4 +1,7 @@
-import { type BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  type BottomTabBarProps,
+  createBottomTabNavigator,
+} from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import BottomNavigation from '../components/BottomNavigation';
 import PrivacySecurityScreen from '../screens/shared/PrivacySecurityScreen';
@@ -10,6 +13,9 @@ import ConditionHistoryScreen from '../screens/landlord/ConditionHistoryScreen';
 import LandlordDashboardScreen from '../screens/landlord/LandlordDashboardScreen';
 import ScheduleInspectionScreen from '../screens/landlord/ScheduleInspectionScreen';
 import EditUnitScreen from '../screens/landlord/EditUnitScreen';
+import MoveInTourScreen from '../screens/landlord/MoveInTourScreen';
+import BaselineCaptureScreen from '../screens/landlord/BaselineCaptureScreen';
+import ReviewBaselineScreen from '../screens/landlord/ReviewBaselineScreen';
 import LandlordConsentScreen from '../screens/landlord/LandlordConsentScreen';
 import {
   LandlordDemoProvider,
@@ -37,7 +43,8 @@ function HomeStack() {
       initialRouteName="Dashboard"
       screenOptions={{
         headerShown: false,
-      }}>
+      }}
+    >
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Dashboard" component={LandlordDashboardScreen} />
       <Stack.Screen name="AddProperty" component={AddPropertyScreen} />
@@ -50,6 +57,9 @@ function HomeStack() {
         component={AIInspectionReviewScreen}
       />
       <Stack.Screen name="EditUnit" component={EditUnitScreen} />
+      <Stack.Screen name="MoveInTour" component={MoveInTourScreen} />
+      <Stack.Screen name="BaselineCapture" component={BaselineCaptureScreen} />
+      <Stack.Screen name="ReviewBaseline" component={ReviewBaselineScreen} />
     </Stack.Navigator>
   );
 }
@@ -64,9 +74,7 @@ function SettingsStackScreen() {
       <SettingsStack.Screen name="SettingsHome">
         {({ navigation }) => (
           <SettingsScreen
-            onPrivacySecurity={() =>
-              navigation.navigate('PrivacySecurity')
-            }
+            onPrivacySecurity={() => navigation.navigate('PrivacySecurity')}
             onProfile={() => navigation.navigate('Profile')}
           />
         )}
@@ -104,7 +112,10 @@ function ConsentGate() {
           />
         )}
       </ConsentStack.Screen>
-      <ConsentStack.Screen name="ConsentPolicy" component={PrivacyPolicyScreen} />
+      <ConsentStack.Screen
+        name="ConsentPolicy"
+        component={PrivacyPolicyScreen}
+      />
     </ConsentStack.Navigator>
   );
 }
@@ -118,8 +129,13 @@ function LandlordTabs() {
     <Tab.Navigator
       initialRouteName="HomeStack"
       tabBar={LandlordTabBar}
-      screenOptions={{ headerShown: false }}>
-      <Tab.Screen name="HomeStack" component={HomeStack} options={homeOptions} />
+      screenOptions={{ headerShown: false }}
+    >
+      <Tab.Screen
+        name="HomeStack"
+        component={HomeStack}
+        options={homeOptions}
+      />
       <Tab.Screen
         name="History"
         component={ConditionHistoryScreen}

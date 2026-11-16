@@ -13,12 +13,55 @@ import MaintenanceDetailScreen from '../screens/tenant/MaintenanceDetailScreen';
 import ReviewInspectionPhotoScreen from '../screens/tenant/ReviewInspectionPhotoScreen';
 import InspectionSubmittedScreen from '../screens/tenant/InspectionSubmittedScreen';
 
-import type { TenantStackParamList } from './types';
+import type { TenantGateStackParamList, TenantStackParamList } from './types';
 import { InspectionProvider } from '../context/InspectionContext';
+import {
+  TenantDemoProvider,
+  useTenantDemo,
+} from '../context/TenantDemoContext';
+import AddedToUnitScreen from '../screens/tenant/AddedToUnitScreen';
+import TenantConsentScreen from '../screens/tenant/TenantConsentScreen';
+import TenantInvitePromptScreen from '../screens/tenant/TenantInvitePromptScreen';
+import TenantBaselineScreen from '../screens/tenant/TenantBaselineScreen';
+import TenantMovePhotosScreen from '../screens/tenant/TenantMovePhotosScreen';
 
 const Stack = createNativeStackNavigator<TenantStackParamList>();
+const Gate = createNativeStackNavigator<TenantGateStackParamList>();
+
+function TenantGate({ stage }: { stage: 'invite' | 'welcome' | 'consent' }) {
+  return (
+    <Gate.Navigator screenOptions={{ headerShown: false }}>
+      {stage === 'invite' ? (
+        <Gate.Screen name="TenantInvite" component={TenantInvitePromptScreen} />
+      ) : stage === 'welcome' ? (
+        <Gate.Screen name="TenantWelcome" component={AddedToUnitScreen} />
+      ) : (
+        <Gate.Screen name="TenantConsent">
+          {({ navigation }) => (
+            <TenantConsentScreen
+              onReadPolicy={() => navigation.navigate('TenantConsentPolicy')}
+            />
+          )}
+        </Gate.Screen>
+      )}
+      <Gate.Screen name="TenantConsentPolicy" component={PrivacyPolicyScreen} />
+    </Gate.Navigator>
+  );
+}
 
 export default function TenantNavigator() {
+  return (
+    <TenantDemoProvider>
+      <TenantStack />
+    </TenantDemoProvider>
+  );
+}
+
+function TenantStack() {
+  const { stage } = useTenantDemo();
+  if (stage !== 'ready') {
+    return <TenantGate stage={stage} />;
+  }
   return (
     <InspectionProvider>
       <Stack.Navigator>
@@ -83,6 +126,16 @@ export default function TenantNavigator() {
           options={{ headerShown: false }}
         />
 
+        <Stack.Screen
+          name="TenantBaseline"
+          component={TenantBaselineScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="TenantMovePhotos"
+          component={TenantMovePhotosScreen}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="InspectionSubmitted"
           component={InspectionSubmittedScreen}

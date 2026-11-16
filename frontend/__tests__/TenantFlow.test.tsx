@@ -13,6 +13,7 @@ import {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert, AppState, Image, Text, TextInput } from 'react-native';
 import { AuthProvider } from '../src/context/AuthContext';
+import { resetDemoStore } from '../src/data/demoStore';
 import RootNavigator from '../src/navigation/RootNavigator';
 import type { TenantStackParamList } from '../src/navigation/types';
 import LandlordDashboardScreen from '../src/screens/landlord/LandlordDashboardScreen';
@@ -50,6 +51,7 @@ let navigation: ReturnType<
 >;
 
 beforeEach(() => {
+  resetDemoStore();
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.mocked(auth.getSession).mockReset();
@@ -66,6 +68,11 @@ afterEach(async () => {
 async function mount(user: User | null = tenant) {
   jest.mocked(auth.getSession).mockResolvedValue(user);
   await render();
+  if (user?.role === 'tenant') await acceptTenantConsent();
+}
+async function acceptTenantConsent() {
+  await press('I agree to the privacy and consent policy.');
+  await press('Accept and continue');
 }
 async function render() {
   await act(async () => {
@@ -132,7 +139,9 @@ it('routes repeated logins, clears logout history, and does not leak demo progre
   await mount(null);
   expect(app.root.findAllByType(TenantDashboardScreen)).toHaveLength(0);
   await signIn(tenant);
-  await press('Start inspection demo');
+  await acceptTenantConsent();
+  await press('Inspections');
+  await press('Continue inspection demo');
   await press(
     'Review placeholder photo',
     app.root.findByType(GuidedInspectionScreen),
@@ -156,7 +165,8 @@ it('routes repeated logins, clears logout history, and does not leak demo progre
   await press('Log out');
   await signIn(tenant);
   expect(navigation.getCurrentRoute()?.name).toBe('Home');
-  await press('Start inspection demo');
+  await press('Inspections');
+  await press('Continue inspection demo');
   await press(
     'Review placeholder photo',
     app.root.findByType(GuidedInspectionScreen),
@@ -187,6 +197,7 @@ it('recovers from network failures and removes expired dashboard sessions', asyn
   expect(app.root.findAllByType(TenantDashboardScreen)).toHaveLength(0);
   jest.mocked(auth.getSession).mockResolvedValueOnce(tenant);
   await press('Retry session check');
+  await acceptTenantConsent();
   expect(navigation.getCurrentRoute()?.name).toBe('Home');
   jest.mocked(auth.getSession).mockResolvedValueOnce(null);
   const callback = listener.mock.calls[listener.mock.calls.length - 1][1];
@@ -220,8 +231,8 @@ it('progresses through four steps, supports retake/back, and clears review histo
     );
     if (index === 0) {
       await act(async () => navigation.goBack());
-      await press('Home');
-      await press('Resume inspection demo');
+      await press('Inspections');
+      await press('Continue inspection demo');
     }
   }
   expect(navigation.getCurrentRoute()?.name).toBe('InspectionSubmitted');
@@ -363,7 +374,8 @@ it('validates availability and retains checked slots after preview', async () =>
 it('keeps inspection progress during session revalidation', async () => {
   const listener = jest.spyOn(AppState, 'addEventListener');
   await mount();
-  await press('Start inspection demo');
+  await press('Inspections');
+  await press('Continue inspection demo');
   await press(
     'Review placeholder photo',
     app.root.findByType(GuidedInspectionScreen),

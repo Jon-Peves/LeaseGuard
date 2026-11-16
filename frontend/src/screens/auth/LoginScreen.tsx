@@ -120,6 +120,17 @@ export default function LoginScreen({ navigation }: Props) {
             Don’t have an account? Register
           </Text>
         </Pressable>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Open invite email (demo)"
+          disabled={request.loading}
+          style={styles.register}
+          onPress={() => navigation.navigate('InviteEmail')}
+        >
+          <Text style={styles.registerText}>
+            Got an invite? Open the invite email (demo)
+          </Text>
+        </Pressable>
       </View>
     </ScreenContainer>
   );

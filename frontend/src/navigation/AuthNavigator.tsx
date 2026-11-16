@@ -4,6 +4,8 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import ResetEmailSentScreen from '../screens/auth/ResetEmailSentScreen';
+import InviteEmailScreen from '../screens/auth/InviteEmailScreen';
+import RegisterFromInviteScreen from '../screens/auth/RegisterFromInviteScreen';
 
 import type { AuthStackParamList } from './types';
 
@@ -21,6 +23,11 @@ export default function AuthNavigator() {
       <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="ResetEmailSent" component={ResetEmailSentScreen} />
+      <Stack.Screen name="InviteEmail" component={InviteEmailScreen} />
+      <Stack.Screen
+        name="RegisterInvite"
+        component={RegisterFromInviteScreen}
+      />
     </Stack.Navigator>
   );
 }

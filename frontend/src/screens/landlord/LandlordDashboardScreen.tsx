@@ -1,4 +1,4 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ActionButton from '../../components/ActionButton';
 import Icon from '../../components/Icon';
@@ -45,6 +45,13 @@ function unitSummary(unit: Unit) {
       pill: { label: 'PENDING', style: 'warn' as const },
     };
   }
+  if (tenant.status === 'declined') {
+    return {
+      headline: `Unit ${unit.name} • ${tenant.email}`,
+      detail: `Declined ${tenant.declinedOn} • Check the email or invite someone else`,
+      pill: { label: 'DECLINED', style: 'danger' as const },
+    };
+  }
   const baseline = unit.baselineRecordedOn
     ? ` • Baseline recorded ${unit.baselineRecordedOn}`
     : '';
@@ -65,9 +72,10 @@ export default function LandlordDashboardScreen({ navigation }: Props) {
   );
   const needsBaseline = units.find(({ unit }) => !unit.baselineRecordedOn);
   const canSchedule =
-    !needsBaseline && units.some(({ unit }) => unit.tenant?.status === 'joined');
+    !needsBaseline &&
+    units.some(({ unit }) => unit.tenant?.status === 'joined');
   const demoTarget = units.find(
-    ({ unit }) => unit.tenant?.status === 'pending' || !unit.baselineRecordedOn,
+    ({ unit }) => unit.tenant?.status === 'pending',
   );
 
   const openUnit = (property: Property, unit: Unit) =>
@@ -186,7 +194,9 @@ export default function LandlordDashboardScreen({ navigation }: Props) {
                         </Text>
                         <Text style={styles.meta}>{summary.detail}</Text>
                       </View>
-                      <View style={[styles.pill, pillStyles[summary.pill.style]]}>
+                      <View
+                        style={[styles.pill, pillStyles[summary.pill.style]]}
+                      >
                         <Text
                           style={[
                             styles.pillText,
@@ -219,10 +229,10 @@ export default function LandlordDashboardScreen({ navigation }: Props) {
                   compact
                   style={styles.nextButton}
                   onPress={() =>
-                    Alert.alert(
-                      'Baseline capture',
-                      'The move-in baseline screens are the next batch of the redesign.',
-                    )
+                    navigation.navigate('MoveInTour', {
+                      propertyId: needsBaseline.property.id,
+                      unitId: needsBaseline.unit.id,
+                    })
                   }
                 />
               </View>
@@ -266,11 +276,9 @@ export default function LandlordDashboardScreen({ navigation }: Props) {
                 style={styles.demo}
               >
                 <Text style={styles.demoText}>
-                  {demoTarget.unit.tenant?.status === 'pending'
-                    ? `Demo: simulate ${firstName(
-                        demoTarget.unit.tenant,
-                      )} joining`
-                    : 'Demo: mark baseline recorded'}
+                  {`Demo: simulate ${firstName(
+                    demoTarget.unit.tenant,
+                  )} joining`}
                 </Text>
               </Pressable>
             ) : null}
@@ -449,16 +457,22 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   demo: { alignSelf: 'center', paddingVertical: 10 },
-  demoText: { fontSize: 12, color: colors.muted, textDecorationLine: 'underline' },
+  demoText: {
+    fontSize: 12,
+    color: colors.muted,
+    textDecorationLine: 'underline',
+  },
 });
 
 const pillStyles = StyleSheet.create({
+  danger: { backgroundColor: '#FDECEC' },
   warn: { backgroundColor: colors.warnBg },
   brand: { backgroundColor: colors.brandTint },
   neutral: { backgroundColor: colors.divider },
 });
 
 const pillTextStyles = StyleSheet.create({
+  danger: { color: colors.error },
   warn: { color: colors.warnText },
   brand: { color: colors.brand },
   neutral: { color: colors.muted },

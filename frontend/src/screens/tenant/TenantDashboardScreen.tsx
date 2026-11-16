@@ -1,409 +1,414 @@
-import Header from '../../components/Header';
-import { colors } from '../../theme/colors';
-import DemoNotice from '../../components/DemoNotice';
-import React from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { useInspection } from '../../context/InspectionContext';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import type { TenantTabParamList } from '../../navigation/types';
-import type { TenantStackParamList } from '../../navigation/types';
-
+import ActionButton from '../../components/ActionButton';
+import NotificationBell from '../../components/NotificationBell';
+import ScreenContainer from '../../components/ScreenContainer';
+import ScreenTitle from '../../components/ScreenTitle';
+import { useAuth } from '../../context/AuthContext';
+import { useTenantDemo } from '../../context/TenantDemoContext';
 import { tenantMockData } from '../../data/tenantMockData';
+import type {
+  TenantStackParamList,
+  TenantTabParamList,
+} from '../../navigation/types';
+import { colors } from '../../theme/colors';
+import { typography } from '../../theme/typography';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TenantTabParamList, 'Home'>,
   NativeStackScreenProps<TenantStackParamList>
 >;
 
-const COLORS = {
-  background: colors.background,
-  white: colors.white,
-  primary: '#1459EB',
-  primaryLight: '#EBF2FF',
-  text: '#131824',
-  muted: '#5E6B80',
-  border: '#D6DEEB',
-  orange: '#E58212',
-  orangeLight: '#FFF2DE',
-  purple: '#6B45D1',
-  purpleLight: '#F2EBFF',
-};
+function MailIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      <Rect
+        x={3}
+        y={5}
+        width={18}
+        height={14}
+        rx={2}
+        stroke="#B45309"
+        strokeWidth={2}
+      />
+      <Path
+        d="m3 7 9 6 9-6"
+        stroke="#B45309"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Rect
+        x={3}
+        y={5}
+        width={18}
+        height={16}
+        rx={2}
+        stroke="#6B45D1"
+        strokeWidth={2}
+      />
+      <Path
+        d="M3 10h18M8 3v4M16 3v4"
+        stroke="#6B45D1"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
 
 export default function TenantDashboardScreen({ navigation }: Props) {
-  const { user } = useAuth();
-  const demo = useInspection();
-  const { tenant, inspection, recentMaintenance } = tenantMockData;
+  const { user, signOut } = useAuth();
+  const {
+    unit,
+    details,
+    isNewTenant,
+    checkForInvite,
+    baselineReviewed,
+    movePhotos,
+  } = useTenantDemo();
+  const ownPhotoCount = Object.keys(movePhotos).length;
+  const [checked, setChecked] = useState(false);
+  const first = user?.name?.trim().split(' ')[0] || user?.email || '';
+  const recent = isNewTenant ? null : tenantMockData.recentMaintenance;
+
+  const bell = (
+    <NotificationBell
+      unreadCount={isNewTenant ? 0 : tenantMockData.notifications.unreadCount}
+      onPress={() => navigation.navigate('Notifications')}
+    />
+  );
+
+  if (!unit) {
+    return (
+      <ScreenContainer style={styles.content}>
+        <ScreenTitle title={`Hi, ${first}`} subtitle="No unit linked yet" />
+        <View style={[styles.card, styles.waiting]}>
+          <View style={styles.mail}>
+            <MailIcon />
+          </View>
+          <Text style={styles.waitingTitle}>Waiting for an invite</Text>
+          <Text style={styles.waitingBody}>
+            Your unit appears here once your landlord invites this email:
+          </Text>
+          <Text style={styles.email}>{user?.email}</Text>
+          <Text style={styles.waitingBody}>
+            Already invited? Your landlord may have used a different email. Ask
+            them to check, or sign in with the email they used.
+          </Text>
+          {checked ? (
+            <Text accessibilityRole="alert" style={styles.checkedNote}>
+              No invite yet for this email.
+            </Text>
+          ) : null}
+          <ActionButton
+            title="Check again"
+            style={styles.fill}
+            onPress={() => setChecked(!checkForInvite())}
+          />
+          <ActionButton
+            title="Sign in with another email"
+            variant="secondary"
+            style={styles.fill}
+            onPress={() => {
+              signOut().catch(() =>
+                Alert.alert('Unable to sign out', 'Please try again.'),
+              );
+            }}
+          />
+        </View>
+        <Text style={styles.footnote}>
+          Inspections and repair requests unlock once you're linked to a unit.
+        </Text>
+      </ScreenContainer>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.container}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Tenant information */}
-          <Header
-            title={`Hi, ${user?.name || user?.email || ''}`}
-            subtitle={`${tenant.propertyAddress} • Unit ${tenant.unitNumber}`}
-            titleStyle={styles.greeting}
-            subtitleStyle={styles.property}
-            style={styles.header}
-            unreadCount={tenantMockData.notifications.unreadCount}
-            onNotificationsPress={() => navigation.navigate('Notifications')}
-          />
+    <ScreenContainer style={styles.content}>
+      <ScreenTitle
+        title={`Hi, ${first}`}
+        subtitle={`${unit.street} • Unit ${unit.unit}`}
+        right={bell}
+      />
 
-          <DemoNotice />
-          {/* Upcoming inspection */}
-          {inspection ? (
-            <View style={styles.inspectionCard}>
-              <View style={styles.dueBadge}>
-                <Text style={styles.dueText}>
-                  DUE {inspection.dueDate.toUpperCase()}
-                </Text>
-              </View>
-
-              <Text style={styles.inspectionTitle}>{inspection.title}</Text>
-
-              <Text style={styles.inspectionSubtitle}>
-                {inspection.requiredAreas} required areas • about{' '}
-                {inspection.estimatedMinutes} minutes
-              </Text>
-
-              <Pressable
-                accessibilityRole="button"
-                style={styles.primaryButton}
-                onPress={() => {
-                  if (demo.complete) {
-                    demo.restart();
-                  }
-                  navigation.navigate('GuidedInspection');
-                }}
-              >
-                <Text style={styles.primaryButtonText}>
-                  {demo.complete
-                    ? 'Start another demo'
-                    : demo.acceptedCount
-                    ? 'Resume inspection demo'
-                    : 'Start inspection demo'}
-                </Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No upcoming inspections</Text>
-
-              <Text style={styles.mutedText}>
-                Your scheduled inspections will appear here.
-              </Text>
-            </View>
-          )}
-
-          {/* Quick actions */}
-          <Text style={styles.sectionTitle}>Quick actions</Text>
-
-          <View style={styles.quickActions}>
-            <Pressable
-              accessibilityRole="button"
-              style={styles.quickCard}
-              onPress={() => navigation.navigate('ReportMaintenance')}
-            >
-              <View style={[styles.actionIcon, styles.orangeIcon]}>
-                <Text style={styles.orangeIconText}>!</Text>
-              </View>
-
-              <Text style={styles.quickTitle}>Report issue</Text>
-
-              <Text style={styles.quickSubtitle}>Demo form</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              style={styles.quickCard}
-              onPress={() => navigation.navigate('InspectionAvailability')}
-            >
-              <View style={[styles.actionIcon, styles.purpleIcon]}>
-                <Text style={styles.purpleIconText}>A</Text>
-              </View>
-
-              <Text style={styles.quickTitle}>Availability</Text>
-
-              <Text style={styles.quickSubtitle}>For in-person visit</Text>
-            </Pressable>
+      {!details?.baselineRecordedOn ? (
+        <View style={[styles.moveIn, styles.moveInWaiting]}>
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>MOVE-IN</Text>
           </View>
+          <Text style={styles.moveInTitle}>Move-in baseline coming soon</Text>
+          <Text style={styles.moveInBody}>
+            {`${
+              unit.landlordName.split(' ')[0]
+            } hasn't recorded it yet. You'll be able to review it here once it's ready.`}
+          </Text>
+        </View>
+      ) : !baselineReviewed ? (
+        <View style={styles.moveIn}>
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>MOVE-IN</Text>
+          </View>
+          <Text style={styles.moveInTitle}>Review your move-in baseline</Text>
+          <Text style={styles.moveInBody}>
+            {`${unit.landlordName.split(' ')[0]} photographed ${
+              details.areas.length
+            } areas on ${
+              details.baselineRecordedOn
+            }. Check they match what you see. You can add your own photos for your records.`}
+          </Text>
+          <ActionButton
+            title="Review baseline"
+            compact
+            style={styles.moveInButton}
+            onPress={() => navigation.navigate('TenantBaseline')}
+          />
+        </View>
+      ) : null}
 
-          {/* Recent activity */}
-          <Text style={styles.sectionTitle}>Recent activity</Text>
+      <Text style={styles.sectionTitle}>Quick actions</Text>
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Report issue"
+          onPress={() => navigation.navigate('ReportMaintenance')}
+          style={({ pressed }) => [
+            styles.card,
+            styles.action,
+            pressed && styles.pressed,
+          ]}
+        >
+          <View style={[styles.actionIcon, styles.orange]}>
+            <Text style={styles.bang}>!</Text>
+          </View>
+          <Text style={styles.actionTitle}>Report issue</Text>
+          <Text style={styles.actionDetail}>Photo or video</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Availability"
+          onPress={() => navigation.navigate('InspectionAvailability')}
+          style={({ pressed }) => [
+            styles.card,
+            styles.action,
+            pressed && styles.pressed,
+          ]}
+        >
+          <View style={[styles.actionIcon, styles.purple]}>
+            <CalendarIcon />
+          </View>
+          <Text style={styles.actionTitle}>Availability</Text>
+          <Text style={styles.actionDetail}>For in-person visits</Text>
+        </Pressable>
+      </View>
 
-          {recentMaintenance ? (
-            <Pressable
-              accessibilityRole="button"
-              style={styles.activityCard}
-              onPress={() =>
-                navigation.navigate('MaintenanceDetail', {
-                  requestId: recentMaintenance.requestId,
-                })
-              }
-            >
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>
-                  {recentMaintenance.status.toUpperCase()}
-                </Text>
-              </View>
-
-              <Text style={styles.activityTitle}>
-                {recentMaintenance.title}
-              </Text>
-
-              <Text style={styles.activityDescription}>
-                {recentMaintenance.update}
-              </Text>
-            </Pressable>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.mutedText}>
-                No recent maintenance activity.
-              </Text>
-            </View>
-          )}
-
-          {/* View unit history */}
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionTitle}>Recent activity</Text>
+        {recent ? (
           <Pressable
             accessibilityRole="button"
-            style={styles.historyButton}
+            accessibilityLabel="View unit history"
             onPress={() => navigation.navigate('History')}
+            hitSlop={8}
           >
-            <Text style={styles.historyButtonText}>View unit history</Text>
+            <Text style={styles.seeAll}>See all</Text>
           </Pressable>
-        </ScrollView>
+        ) : null}
       </View>
-    </SafeAreaView>
+      {baselineReviewed ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('TenantBaseline')}
+          style={({ pressed }) => [
+            styles.card,
+            styles.activity,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.activityTitle}>Move-in baseline reviewed</Text>
+          <Text style={styles.actionDetail}>
+            {ownPhotoCount > 0
+              ? `You added ${ownPhotoCount} photo${
+                  ownPhotoCount === 1 ? '' : 's'
+                } for your records`
+              : 'Tap to see the baseline photos again'}
+          </Text>
+        </Pressable>
+      ) : null}
+      {recent ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() =>
+            navigation.navigate('MaintenanceDetail', {
+              requestId: recent.requestId,
+            })
+          }
+          style={({ pressed }) => [
+            styles.card,
+            styles.activity,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.activityTitle}>{recent.title}</Text>
+          <Text style={styles.actionDetail}>
+            {recent.status} • {recent.update}
+          </Text>
+        </Pressable>
+      ) : baselineReviewed ? null : (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>Nothing here yet</Text>
+          <Text style={styles.actionDetail}>
+            Inspections and repair requests will show up here.
+          </Text>
+        </View>
+      )}
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-
-  container: {
-    flex: 1,
-  },
-
-  scrollView: {
-    flex: 1,
-  },
-
   content: {
     paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 28,
     paddingBottom: 32,
+    gap: 18,
   },
-
-  header: { marginBottom: 28 },
-  greeting: {
-    color: COLORS.text,
-    fontSize: 25,
-    fontWeight: '700',
-  },
-
-  property: {
-    color: COLORS.muted,
-    fontSize: 13,
-    marginTop: 5,
-  },
-
-  inspectionCard: {
-    backgroundColor: COLORS.white,
+  card: {
+    backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: COLORS.primary,
+    borderColor: colors.cardBorder,
     borderRadius: 18,
+  },
+  pressed: { opacity: 0.8 },
+  moveIn: {
+    gap: 6,
     padding: 16,
-    marginBottom: 26,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: colors.brand,
+    backgroundColor: colors.white,
   },
-
-  dueBadge: {
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 13,
+  tag: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 11,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: colors.brandTint,
   },
-
-  dueText: {
-    color: COLORS.primary,
+  tagText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: typography.bold,
+    letterSpacing: 0.3,
+    color: colors.brand,
   },
-
-  inspectionTitle: {
+  moveInWaiting: { borderWidth: 1, borderColor: colors.cardBorder },
+  moveInTitle: {
+    marginTop: 4,
     fontSize: 17,
-    color: COLORS.text,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontWeight: typography.bold,
+    color: colors.ink,
   },
-
-  inspectionSubtitle: {
-    fontSize: 12,
-    color: COLORS.muted,
-    marginBottom: 14,
-  },
-
-  primaryButton: {
-    minHeight: 36,
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  primaryButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
+  moveInBody: { fontSize: 13, lineHeight: 19, color: colors.muted },
+  moveInButton: { marginTop: 8 },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 14,
+    fontWeight: typography.bold,
+    color: colors.ink,
   },
-
-  quickActions: {
+  sectionRow: {
     flexDirection: 'row',
-    gap: 14,
-    marginBottom: 28,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-
-  quickCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 15,
-    minHeight: 110,
+  seeAll: {
+    fontSize: 13,
+    fontWeight: typography.semibold,
+    color: colors.brand,
   },
-
+  actions: { flexDirection: 'row', gap: 12 },
+  action: { flex: 1, gap: 4, padding: 14 },
   actionIcon: {
-    height: 36,
-    width: 36,
-    borderRadius: 18,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-  },
-
-  orangeIcon: {
-    backgroundColor: COLORS.orangeLight,
-  },
-
-  orangeIconText: {
-    color: COLORS.orange,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  purpleIcon: {
-    backgroundColor: COLORS.purpleLight,
-  },
-
-  purpleIconText: {
-    color: COLORS.purple,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  quickTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-
-  quickSubtitle: {
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 5,
-  },
-
-  activityCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    marginBottom: 28,
-  },
-
-  statusBadge: {
-    backgroundColor: COLORS.orangeLight,
-    borderRadius: 13,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     marginBottom: 10,
   },
-
-  statusText: {
-    fontSize: 11,
-    color: COLORS.orange,
-    fontWeight: '600',
+  orange: { backgroundColor: '#FFF2DE' },
+  purple: { backgroundColor: '#F2EBFF' },
+  bang: { fontSize: 14, fontWeight: typography.bold, color: '#E58212' },
+  actionTitle: {
+    fontSize: 14,
+    fontWeight: typography.semibold,
+    color: colors.ink,
   },
-
+  actionDetail: { fontSize: 12, lineHeight: 17, color: colors.muted },
+  activity: { gap: 4, paddingVertical: 14, paddingHorizontal: 16 },
   activityTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 6,
+    fontWeight: typography.semibold,
+    color: colors.ink,
   },
-
-  activityDescription: {
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-
-  historyButton: {
-    backgroundColor: COLORS.white,
-    borderColor: COLORS.border,
+  empty: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    minHeight: 46,
-    borderRadius: 14,
+    borderStyle: 'dashed',
+    borderColor: colors.cardBorder,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: typography.medium,
+    color: colors.ink,
+  },
+  waiting: {
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 28,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  mail: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.warnBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  historyButtonText: {
-    color: COLORS.primary,
+  waitingTitle: {
+    marginTop: 4,
+    fontSize: 18,
+    fontWeight: typography.bold,
+    color: colors.ink,
+  },
+  waitingBody: {
     fontSize: 14,
-    fontWeight: '600',
+    lineHeight: 20,
+    textAlign: 'center',
+    color: colors.muted,
   },
-
-  emptyCard: {
-    backgroundColor: COLORS.white,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 20,
-    marginBottom: 26,
-  },
-
-  emptyTitle: {
-    color: COLORS.text,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-
-  mutedText: {
-    color: COLORS.muted,
+  email: { fontSize: 15, fontWeight: typography.semibold, color: colors.ink },
+  checkedNote: { fontSize: 13, color: colors.warnText },
+  fill: { alignSelf: 'stretch' },
+  footnote: {
     fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    color: colors.muted,
   },
 });

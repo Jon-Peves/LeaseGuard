@@ -8,7 +8,7 @@ import {
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'link';
+type Variant = 'primary' | 'secondary' | 'dangerOutline' | 'danger' | 'link';
 
 type Props = {
   title: string;
@@ -72,6 +72,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
+  dangerOutline: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: '#F3C7C2',
+  },
   danger: { height: 44, backgroundColor: 'transparent' },
   link: { height: 44, backgroundColor: 'transparent' },
   disabled: { backgroundColor: colors.disabledBg, borderWidth: 0 },
@@ -84,6 +89,7 @@ const styles = StyleSheet.create({
 const labelStyles = StyleSheet.create({
   primary: { color: colors.white },
   secondary: { color: colors.brand },
+  dangerOutline: { color: colors.error },
   danger: { color: colors.error, fontSize: 14 },
   link: { color: colors.brand, fontSize: 14 },
 });

@@ -116,7 +116,12 @@ export default function AddPropertyScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 32, gap: 16 },
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 32,
+    gap: 16,
+  },
   row: { flexDirection: 'row', gap: 12 },
   half: { flex: 1 },
   actions: { gap: 10, marginTop: 16 },

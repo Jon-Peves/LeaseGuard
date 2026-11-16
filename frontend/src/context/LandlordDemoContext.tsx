@@ -2,10 +2,25 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type PropsWithChildren,
 } from 'react';
+import { useAuth } from './AuthContext';
+import {
+  getLandlord,
+  makeId,
+  nameFromEmail,
+  recordInvite,
+  withdrawInvite,
+  saveLandlord,
+  shortDate,
+  type Activity,
+  type Property,
+  type TenantLink,
+  type Unit,
+} from '../data/demoStore';
 
 export const MAX_AREAS = 10;
 export const MIN_AREAS = 2;
@@ -16,36 +31,7 @@ export const DEFAULT_AREAS = [
   'Bedroom floor',
 ];
 
-export type TenantLink = {
-  email: string;
-  name?: string;
-  status: 'pending' | 'joined';
-  invitedOn: string;
-  joinedOn?: string;
-};
-
-export type Unit = {
-  id: string;
-  name: string;
-  bedrooms: string;
-  bathrooms: string;
-  tenant?: TenantLink;
-  areas: string[];
-  baselineRecordedOn?: string;
-};
-
-export type Property = {
-  id: string;
-  street: string;
-  city: string;
-  units: Unit[];
-};
-
-export type Activity = {
-  id: string;
-  title: string;
-  detail: string;
-};
+export type { Activity, Property, TenantLink, Unit } from '../data/demoStore';
 
 export type ToastMessage = { title: string; detail?: string };
 
@@ -57,7 +43,10 @@ export type NewProperty = {
   tenantEmail?: string;
 };
 
-export type UnitChanges = Pick<Unit, 'name' | 'bedrooms' | 'bathrooms' | 'areas'>;
+export type UnitChanges = Pick<
+  Unit,
+  'name' | 'bedrooms' | 'bathrooms' | 'areas'
+>;
 
 type LandlordDemo = {
   consented: boolean;
@@ -66,9 +55,22 @@ type LandlordDemo = {
   toast: ToastMessage | null;
   acceptConsent: () => void;
   addProperty: (input: NewProperty) => void;
-  updateUnit: (propertyId: string, unitId: string, changes: UnitChanges) => void;
+  updateUnit: (
+    propertyId: string,
+    unitId: string,
+    changes: UnitChanges,
+  ) => void;
   removeTenant: (propertyId: string, unitId: string) => void;
+  sendInvite: (propertyId: string, unitId: string, email: string) => void;
+  cancelInvite: (propertyId: string, unitId: string) => void;
   advanceDemo: (propertyId: string, unitId: string) => void;
+  setBaselinePhoto: (
+    propertyId: string,
+    unitId: string,
+    area: string,
+    uri: string,
+  ) => void;
+  saveBaseline: (propertyId: string, unitId: string) => void;
   dismissToast: () => void;
   findUnit: (
     propertyId: string,
@@ -78,35 +80,30 @@ type LandlordDemo = {
 
 const LandlordDemoContext = createContext<LandlordDemo | null>(null);
 
-function shortDate(date = new Date()) {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function nameFromEmail(email: string) {
-  const local = email.split('@')[0] ?? '';
-  return local
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map(part => part[0].toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
 function splitAddress(address: string) {
   const [street, ...rest] = address.split(',').map(part => part.trim());
   return { street: street || address.trim(), city: rest.join(', ') };
 }
 
-let nextId = 1;
-const makeId = (prefix: string) => `${prefix}-${nextId++}`;
-
 export function LandlordDemoProvider({
   children,
   initialConsented = false,
 }: PropsWithChildren<{ initialConsented?: boolean }>) {
-  const [consented, setConsented] = useState(initialConsented);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [activity, setActivity] = useState<Activity[]>([]);
+  const { user } = useAuth();
+  const userId = user?.id ?? 'guest';
+  const saved = getLandlord(userId);
+  const [consented, setConsented] = useState(
+    saved?.consented ?? initialConsented,
+  );
+  const [properties, setProperties] = useState<Property[]>(
+    saved?.properties ?? [],
+  );
+  const [activity, setActivity] = useState<Activity[]>(saved?.activity ?? []);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  useEffect(() => {
+    saveLandlord(userId, { consented, properties, activity });
+  }, [userId, consented, properties, activity]);
 
   const patchUnit = useCallback(
     (propertyId: string, unitId: string, patch: (unit: Unit) => Unit) => {
@@ -126,30 +123,49 @@ export function LandlordDemoProvider({
     [],
   );
 
-  const addProperty = useCallback((input: NewProperty) => {
-    const { street, city } = splitAddress(input.address);
-    const email = input.tenantEmail?.trim();
-    const unitName = input.unit.trim();
-    const unit: Unit = {
-      id: makeId('unit'),
-      name: unitName,
-      bedrooms: input.bedrooms.trim(),
-      bathrooms: input.bathrooms.trim(),
-      areas: [...DEFAULT_AREAS],
-      tenant: email
-        ? { email, status: 'pending', invitedOn: shortDate() }
-        : undefined,
-    };
-    setProperties(current => [
-      ...current,
-      { id: makeId('property'), street, city, units: [unit] },
-    ]);
-    setToast(
-      email
-        ? { title: `Unit ${unitName} added. Invite sent.`, detail: email }
-        : { title: `Unit ${unitName} added.` },
-    );
-  }, []);
+  const addProperty = useCallback(
+    (input: NewProperty) => {
+      const { street, city } = splitAddress(input.address);
+      const email = input.tenantEmail?.trim();
+      const unitName = input.unit.trim();
+      const unit: Unit = {
+        id: makeId('unit'),
+        name: unitName,
+        bedrooms: input.bedrooms.trim(),
+        bathrooms: input.bathrooms.trim(),
+        areas: [...DEFAULT_AREAS],
+        tenant: email
+          ? { email, status: 'pending', invitedOn: shortDate() }
+          : undefined,
+      };
+      const propertyId = makeId('property');
+      setProperties(current => [
+        ...current,
+        { id: propertyId, street, city, units: [unit] },
+      ]);
+      if (email) {
+        recordInvite({
+          email,
+          landlordId: userId,
+          landlordName: user?.name?.trim() || user?.email || 'Your landlord',
+          propertyId,
+          unitId: unit.id,
+          street,
+          city,
+          unit: unitName,
+          bedrooms: unit.bedrooms,
+          bathrooms: unit.bathrooms,
+          areaCount: unit.areas.length,
+        });
+      }
+      setToast(
+        email
+          ? { title: `Unit ${unitName} added. Invite sent.`, detail: email }
+          : { title: `Unit ${unitName} added.` },
+      );
+    },
+    [userId, user?.name, user?.email],
+  );
 
   const updateUnit = useCallback(
     (propertyId: string, unitId: string, changes: UnitChanges) => {
@@ -162,7 +178,46 @@ export function LandlordDemoProvider({
   const removeTenant = useCallback(
     (propertyId: string, unitId: string) => {
       patchUnit(propertyId, unitId, unit => ({ ...unit, tenant: undefined }));
+      withdrawInvite(propertyId, unitId);
       setToast({ title: 'Tenant removed from unit.' });
+    },
+    [patchUnit],
+  );
+
+  const sendInvite = useCallback(
+    (propertyId: string, unitId: string, email: string) => {
+      const property = properties.find(p => p.id === propertyId);
+      const unit = property?.units.find(u => u.id === unitId);
+      if (!property || !unit) return;
+      const address = email.trim();
+      withdrawInvite(propertyId, unitId);
+      recordInvite({
+        email: address,
+        landlordId: userId,
+        landlordName: user?.name?.trim() || user?.email || 'Your landlord',
+        propertyId,
+        unitId,
+        street: property.street,
+        city: property.city,
+        unit: unit.name,
+        bedrooms: unit.bedrooms,
+        bathrooms: unit.bathrooms,
+        areaCount: unit.areas.length,
+      });
+      patchUnit(propertyId, unitId, u => ({
+        ...u,
+        tenant: { email: address, status: 'pending', invitedOn: shortDate() },
+      }));
+      setToast({ title: 'Invite sent.', detail: address });
+    },
+    [properties, patchUnit, userId, user?.name, user?.email],
+  );
+
+  const cancelInvite = useCallback(
+    (propertyId: string, unitId: string) => {
+      patchUnit(propertyId, unitId, unit => ({ ...unit, tenant: undefined }));
+      withdrawInvite(propertyId, unitId);
+      setToast({ title: 'Invite canceled.' });
     },
     [patchUnit],
   );
@@ -196,18 +251,34 @@ export function LandlordDemoProvider({
           {
             id: makeId('activity'),
             title: `${name} joined Unit ${unit.name}`,
-            detail: 'Today • She can now see the move-in baseline',
+            detail: 'Today • They can now see the move-in baseline',
           },
           ...current,
         ]);
-      } else if (!unit.baselineRecordedOn) {
-        patchUnit(propertyId, unitId, u => ({
-          ...u,
-          baselineRecordedOn: shortDate(),
-        }));
       }
     },
     [findUnit, patchUnit],
+  );
+
+  const setBaselinePhoto = useCallback(
+    (propertyId: string, unitId: string, area: string, uri: string) => {
+      patchUnit(propertyId, unitId, u => ({
+        ...u,
+        baselinePhotos: { ...u.baselinePhotos, [area]: uri },
+      }));
+    },
+    [patchUnit],
+  );
+
+  const saveBaseline = useCallback(
+    (propertyId: string, unitId: string) => {
+      patchUnit(propertyId, unitId, u => ({
+        ...u,
+        baselineRecordedOn: shortDate(),
+      }));
+      setToast({ title: 'Move-in baseline saved.' });
+    },
+    [patchUnit],
   );
 
   const value = useMemo(
@@ -220,7 +291,11 @@ export function LandlordDemoProvider({
       addProperty,
       updateUnit,
       removeTenant,
+      sendInvite,
+      cancelInvite,
       advanceDemo,
+      setBaselinePhoto,
+      saveBaseline,
       dismissToast: () => setToast(null),
       findUnit,
     }),
@@ -232,7 +307,11 @@ export function LandlordDemoProvider({
       addProperty,
       updateUnit,
       removeTenant,
+      sendInvite,
+      cancelInvite,
       advanceDemo,
+      setBaselinePhoto,
+      saveBaseline,
       findUnit,
     ],
   );

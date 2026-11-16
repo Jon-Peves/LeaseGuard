@@ -6,6 +6,8 @@ export type AuthStackParamList = {
   Register: undefined;
   ForgotPassword: { email?: string } | undefined;
   ResetEmailSent: { email: string; delivery: ResetDelivery };
+  InviteEmail: undefined;
+  RegisterInvite: undefined;
 };
 
 export type LandlordStackParamList = {
@@ -15,6 +17,14 @@ export type LandlordStackParamList = {
   ScheduleInspection: undefined;
   AIInspectionReview: undefined;
   EditUnit: { propertyId: string; unitId: string };
+  MoveInTour: { propertyId: string; unitId: string };
+  BaselineCapture: {
+    propertyId: string;
+    unitId: string;
+    step: number;
+    retake?: boolean;
+  };
+  ReviewBaseline: { propertyId: string; unitId: string };
 };
 
 export type LandlordConsentStackParamList = {
@@ -32,9 +42,7 @@ export type LandlordSettingsStackParamList = {
 export type LandlordTabParamList = {
   HomeStack: NavigatorScreenParams<LandlordStackParamList> | undefined;
   History: undefined;
-  Settings:
-    | NavigatorScreenParams<LandlordSettingsStackParamList>
-    | undefined;
+  Settings: NavigatorScreenParams<LandlordSettingsStackParamList> | undefined;
 };
 export type TenantTabParamList = {
   Home: undefined;
@@ -59,4 +67,13 @@ export type TenantStackParamList = {
   };
   ReviewInspectionPhoto: { stepIndex: number };
   InspectionSubmitted: undefined;
+  TenantBaseline: undefined;
+  TenantMovePhotos: { step: number };
+};
+
+export type TenantGateStackParamList = {
+  TenantInvite: undefined;
+  TenantWelcome: undefined;
+  TenantConsent: undefined;
+  TenantConsentPolicy: undefined;
 };

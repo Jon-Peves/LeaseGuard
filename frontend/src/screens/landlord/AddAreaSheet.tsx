@@ -126,8 +126,8 @@ export default function AddAreaSheet({
             </View>
           </View>
           <Text style={styles.warning}>
-            This area has no baseline yet. Record one before the next
-            inspection that includes it.
+            This area has no baseline yet. Record one before the next inspection
+            that includes it.
           </Text>
           <ActionButton title="Add area" onPress={add} />
           <ActionButton title="Cancel" variant="link" onPress={onClose} />
