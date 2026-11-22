@@ -14,7 +14,11 @@ import {
   type Unit,
 } from '../../context/LandlordDemoContext';
 import type { LandlordStackParamList } from '../../navigation/types';
+import { currentInspection } from '../../data/demoStore';
+import { schedulableUnits } from './ScheduleInspectionScreen';
+import { shortDay, slotLabel } from '../../utils/dates';
 import { colors } from '../../theme/colors';
+import { LEASE_API_ENABLED } from '../../services/leaseConfig';
 import { typography } from '../../theme/typography';
 
 type Props = NativeStackScreenProps<LandlordStackParamList, 'Dashboard'>;
@@ -55,9 +59,19 @@ function unitSummary(unit: Unit) {
   const baseline = unit.baselineRecordedOn
     ? ` • Baseline recorded ${unit.baselineRecordedOn}`
     : '';
+  const inspection = currentInspection(unit);
+  const status = !inspection
+    ? `Joined ${tenant.joinedOn}${baseline}`
+    : inspection.status === 'scheduled'
+    ? `Inspection due ${shortDay(inspection.dueDate ?? '')}`
+    : inspection.status === 'submitted'
+    ? `Inspection submitted ${inspection.submittedOn}`
+    : inspection.status === 'confirmed'
+    ? 'In-person inspection confirmed'
+    : 'In-person inspection • picking a time';
   return {
     headline: `Unit ${unit.name} • ${tenant.name}`,
-    detail: `Joined ${tenant.joinedOn}${baseline}`,
+    detail: status,
     pill: { label: 'JOINED', style: 'brand' as const },
   };
 }
@@ -71,9 +85,30 @@ export default function LandlordDashboardScreen({ navigation }: Props) {
     property.units.map(unit => ({ property, unit })),
   );
   const needsBaseline = units.find(({ unit }) => !unit.baselineRecordedOn);
-  const canSchedule =
-    !needsBaseline &&
-    units.some(({ unit }) => unit.tenant?.status === 'joined');
+  const canSchedule = schedulableUnits(properties).length > 0;
+  const inspectionUpdates = units
+    .map(({ property, unit }) => ({
+      property,
+      unit,
+      inspection: currentInspection(unit),
+    }))
+    .filter(
+      ({ inspection }) =>
+        inspection &&
+        [
+          'times-sent',
+          'times-declined',
+          'confirmed',
+          'awaiting-times',
+        ].includes(inspection.status),
+    );
+  const reviews = units
+    .map(({ property, unit }) => ({
+      property,
+      unit,
+      inspection: currentInspection(unit),
+    }))
+    .filter(({ inspection }) => inspection?.status === 'submitted');
   const demoTarget = units.find(
     ({ unit }) => unit.tenant?.status === 'pending',
   );
@@ -238,6 +273,88 @@ export default function LandlordDashboardScreen({ navigation }: Props) {
               </View>
             ) : null}
 
+            {reviews.map(({ property, unit, inspection }) => {
+              const who = firstName(unit.tenant);
+              const ai = inspection?.ai;
+              const flagged = Object.values(ai?.results ?? {}).filter(
+                r =>
+                  !('error' in r) &&
+                  (r.classification === 'damage' ||
+                    r.photo_quality !== 'good' ||
+                    !r.same_area),
+              ).length;
+              return (
+                <View key={unit.id} style={styles.nextCard}>
+                  <Text style={styles.nextTitle}>
+                    {!ai || ai.status === 'pending'
+                      ? `AI is checking ${who}'s inspection photos`
+                      : ai.status === 'error'
+                      ? "AI review couldn't run"
+                      : flagged
+                      ? `AI review ready • ${flagged} to check`
+                      : 'AI review ready • no damage found'}
+                  </Text>
+                  <Text style={styles.nextBody}>
+                    {`${property.street} • Unit ${unit.name} • submitted ${inspection?.submittedOn}`}
+                  </Text>
+                  <ActionButton
+                    title="View AI review"
+                    compact
+                    style={styles.nextButton}
+                    onPress={() =>
+                      navigation.navigate('InspectionResults', {
+                        propertyId: property.id,
+                        unitId: unit.id,
+                      })
+                    }
+                  />
+                </View>
+              );
+            })}
+
+            {inspectionUpdates.map(({ property, unit, inspection }) => {
+              const who = firstName(unit.tenant);
+              const slot = inspection?.slots?.find(
+                s => s.id === inspection.confirmedSlot,
+              );
+              const needsAction =
+                inspection?.status === 'times-sent' ||
+                inspection?.status === 'times-declined';
+              return (
+                <View key={unit.id} style={styles.nextCard}>
+                  <Text style={styles.nextTitle}>
+                    {inspection?.status === 'times-sent'
+                      ? `${who} sent their availability`
+                      : inspection?.status === 'times-declined'
+                      ? `None of your times work for ${who}`
+                      : inspection?.status === 'confirmed' && slot
+                      ? `In-person inspection • ${slotLabel(slot)}`
+                      : `Waiting for ${who} to pick times`}
+                  </Text>
+                  <Text style={styles.nextBody}>
+                    {`${property.street} • Unit ${unit.name}`}
+                  </Text>
+                  {needsAction ? (
+                    <ActionButton
+                      title={
+                        inspection?.status === 'times-sent'
+                          ? 'Confirm a time'
+                          : 'Propose new times'
+                      }
+                      compact
+                      style={styles.nextButton}
+                      onPress={() =>
+                        navigation.navigate('ConfirmInspectionTime', {
+                          propertyId: property.id,
+                          unitId: unit.id,
+                        })
+                      }
+                    />
+                  ) : null}
+                </View>
+              );
+            })}
+
             {canSchedule ? (
               <ActionButton
                 title="Schedule inspection"
@@ -267,7 +384,7 @@ export default function LandlordDashboardScreen({ navigation }: Props) {
               </>
             ) : null}
 
-            {demoTarget ? (
+            {demoTarget && !LEASE_API_ENABLED ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() =>

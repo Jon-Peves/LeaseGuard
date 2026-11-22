@@ -14,8 +14,10 @@ export type LandlordStackParamList = {
   Notifications: undefined;
   Dashboard: undefined;
   AddProperty: undefined;
-  ScheduleInspection: undefined;
+  ScheduleInspection: { propertyId: string; unitId: string } | undefined;
+  ConfirmInspectionTime: { propertyId: string; unitId: string };
   AIInspectionReview: undefined;
+  InspectionResults: { propertyId: string; unitId: string };
   EditUnit: { propertyId: string; unitId: string };
   MoveInTour: { propertyId: string; unitId: string };
   BaselineCapture: {
@@ -69,6 +71,11 @@ export type TenantStackParamList = {
   InspectionSubmitted: undefined;
   TenantBaseline: undefined;
   TenantMovePhotos: { step: number };
+  TenantPickTime: undefined;
+  TenantInspectionCapture: { step: number; retake?: boolean };
+  TenantInspectionPhoto: { step: number; retake?: boolean };
+  TenantInspectionReview: undefined;
+  TenantInspectionDone: undefined;
 };
 
 export type TenantGateStackParamList = {

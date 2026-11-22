@@ -1,6 +1,8 @@
 // In-memory store shared by the landlord and tenant demo flows. It lives for
 // as long as the app is open, so a landlord's invite can be accepted by a
-// tenant who signs up afterwards. Replaced by the Django API later.
+// tenant who signs up afterwards. The app now uses the Django API instead
+// (services/leaseService.ts); Jest keeps using this store as an offline fake.
+import { LEASE_API_ENABLED, newKey } from '../services/leaseConfig';
 
 export type TenantLink = {
   email: string;
@@ -13,6 +15,58 @@ export type TenantLink = {
 
 export type PhotoMap = Record<string, string>;
 
+export type Slot = { id: string; date: string; time: string };
+
+export type InspectionStatus =
+  | 'scheduled'
+  | 'awaiting-times'
+  | 'times-sent'
+  | 'times-declined'
+  | 'confirmed'
+  | 'submitted';
+
+export type AIFinding = {
+  description: string;
+  classification: 'normal_wear' | 'damage';
+  pre_existing_worsened: boolean;
+};
+
+// Gemini's answer for one area (inspections/schemas.py), or why it is missing.
+export type AreaResult =
+  | {
+      photo_quality: 'good' | 'too_dark' | 'blurry' | 'wrong_area';
+      same_area: boolean;
+      change_detected: boolean;
+      classification: 'none' | 'normal_wear' | 'damage';
+      severity: 'low' | 'medium' | 'high' | null;
+      confidence: 'low' | 'medium' | 'high';
+      obstructed_areas: string | null;
+      findings: AIFinding[];
+      summary: string;
+    }
+  | { error: string };
+
+export type InspectionAI = {
+  status: 'pending' | 'done' | 'error';
+  results: Record<string, AreaResult>;
+};
+
+export type Inspection = {
+  id: string;
+  kind: 'remote' | 'inperson';
+  areas: string[];
+  status: InspectionStatus;
+  createdOn: string;
+  dueDate?: string;
+  slots?: Slot[];
+  tenantSlots?: string[];
+  confirmedSlot?: string;
+  photos: PhotoMap;
+  notes?: Record<string, string>;
+  submittedOn?: string;
+  ai?: InspectionAI;
+};
+
 export type Unit = {
   id: string;
   name: string;
@@ -22,6 +76,8 @@ export type Unit = {
   areas: string[];
   baselinePhotos?: PhotoMap;
   baselineRecordedOn?: string;
+  baselineNotes?: Record<string, string>;
+  inspections?: Inspection[];
 };
 
 export type Property = {
@@ -68,8 +124,17 @@ export type UnitDetails = {
   areas: string[];
   baselinePhotos: PhotoMap;
   baselineRecordedOn?: string;
+  baselineNotes?: Record<string, string>;
   landlordName: string;
+  inspection?: Inspection;
 };
+
+export function currentInspection(unit: {
+  inspections?: Inspection[];
+}): Inspection | undefined {
+  const list = unit.inspections ?? [];
+  return list[list.length - 1];
+}
 
 export const sampleInvite: Invite = {
   email: 'alyssa.patel@example.com',
@@ -95,7 +160,8 @@ let nextId = 1;
 const key = (email: string) => email.trim().toLowerCase();
 
 export function makeId(prefix: string) {
-  return `${prefix}-${nextId++}`;
+  // Server ids must stay unique after the app restarts.
+  return LEASE_API_ENABLED ? newKey(prefix) : `${prefix}-${nextId++}`;
 }
 
 export function shortDate(date = new Date()) {
@@ -147,8 +213,45 @@ export function unitDetailsFor(invite: Invite): UnitDetails {
     areas: unit.areas,
     baselinePhotos: unit.baselinePhotos ?? {},
     baselineRecordedOn: unit.baselineRecordedOn,
+    baselineNotes: unit.baselineNotes,
     landlordName: invite.landlordName,
+    inspection: currentInspection(unit),
   };
+}
+
+export function updateTenantInspection(
+  invite: Invite,
+  inspectionId: string,
+  patch: Partial<Inspection>,
+  activity?: { title: string; detail: string },
+) {
+  const landlord = landlords.get(invite.landlordId);
+  if (!landlord) return;
+  landlords.set(invite.landlordId, {
+    ...landlord,
+    properties: landlord.properties.map(property =>
+      property.id !== invite.propertyId
+        ? property
+        : {
+            ...property,
+            units: property.units.map(unit =>
+              unit.id !== invite.unitId
+                ? unit
+                : {
+                    ...unit,
+                    inspections: (unit.inspections ?? []).map(inspection =>
+                      inspection.id === inspectionId
+                        ? { ...inspection, ...patch }
+                        : inspection,
+                    ),
+                  },
+            ),
+          },
+    ),
+    activity: activity
+      ? [{ id: makeId('activity'), ...activity }, ...landlord.activity]
+      : landlord.activity,
+  });
 }
 
 export function saveTenant(id: string, snapshot: TenantSnapshot) {

@@ -26,8 +26,16 @@ type Props = NativeStackScreenProps<LandlordStackParamList, 'EditUnit'>;
 
 export default function EditUnitScreen({ navigation, route }: Props) {
   const { propertyId, unitId } = route.params;
-  const { findUnit, updateUnit, removeTenant, sendInvite, cancelInvite } =
-    useLandlordDemo();
+  const {
+    findUnit,
+    updateUnit,
+    removeTenant,
+    sendInvite,
+    cancelInvite,
+    renameArea,
+  } = useLandlordDemo();
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
   const found = findUnit(propertyId, unitId);
 
   const [name, setName] = useState(found?.unit.name ?? '');
@@ -70,6 +78,22 @@ export default function EditUnitScreen({ navigation, route }: Props) {
     inviteEmail.trim().toLowerCase() !== (tenant?.email ?? '').toLowerCase();
   const show = (error?: string) => (submitted ? error : undefined);
   const atLimit = areas.length >= MAX_AREAS;
+
+  const draftTaken = areas.some(
+    a => a !== renaming && a.toLowerCase() === draftName.trim().toLowerCase(),
+  );
+
+  function saveAreaName() {
+    const next = draftName.trim();
+    if (!renaming || !next || draftTaken) return;
+    // Saved areas are renamed on the server right away so their photos,
+    // notes and past results move with them.
+    if (unit.areas.includes(renaming)) {
+      renameArea(propertyId, unitId, renaming, next);
+    }
+    setAreas(current => current.map(a => (a === renaming ? next : a)));
+    setRenaming(null);
+  }
 
   function moveUp(index: number) {
     if (index === 0) return;
@@ -268,35 +292,78 @@ export default function EditUnitScreen({ navigation, route }: Props) {
             </Text>
           </View>
           <View style={[styles.card, styles.areas]}>
-            {areas.map((area, index) => (
-              <View
-                key={area}
-                style={[
-                  styles.area,
-                  index < areas.length - 1 && styles.divider,
-                ]}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Move ${area} up`}
-                  onPress={() => moveUp(index)}
-                  hitSlop={8}
+            {areas.map((area, index) =>
+              renaming === area ? (
+                <View key={area} style={styles.renameArea}>
+                  <Field
+                    label={`Rename ${area}`}
+                    value={draftName}
+                    onChangeText={setDraftName}
+                    maxLength={60}
+                    autoFocus
+                    error={
+                      draftTaken
+                        ? 'Another area already has this name.'
+                        : undefined
+                    }
+                  />
+                  <View style={styles.renameButtons}>
+                    <ActionButton
+                      title="Save name"
+                      compact
+                      disabled={!draftName.trim() || draftTaken}
+                      onPress={saveAreaName}
+                    />
+                    <ActionButton
+                      title="Cancel"
+                      compact
+                      variant="secondary"
+                      onPress={() => setRenaming(null)}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <View
+                  key={area}
+                  style={[
+                    styles.area,
+                    index < areas.length - 1 && styles.divider,
+                  ]}
                 >
-                  <Icon name="grip" size={18} color="#94A3B8" />
-                </Pressable>
-                <Text style={styles.areaName}>{`${index + 1}. ${area}`}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${area}`}
-                  onPress={() =>
-                    setAreas(current => current.filter(a => a !== area))
-                  }
-                  hitSlop={8}
-                >
-                  <Icon name="close" size={16} color={colors.muted} />
-                </Pressable>
-              </View>
-            ))}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${area} up`}
+                    onPress={() => moveUp(index)}
+                    hitSlop={8}
+                  >
+                    <Icon name="grip" size={18} color="#94A3B8" />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Rename ${area}`}
+                    onPress={() => {
+                      setDraftName(area);
+                      setRenaming(area);
+                    }}
+                    style={styles.areaNameButton}
+                  >
+                    <Text style={styles.areaName}>{`${
+                      index + 1
+                    }. ${area}`}</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${area}`}
+                    onPress={() =>
+                      setAreas(current => current.filter(a => a !== area))
+                    }
+                    hitSlop={8}
+                  >
+                    <Icon name="close" size={16} color={colors.muted} />
+                  </Pressable>
+                </View>
+              ),
+            )}
           </View>
           {show(errors.areas) ? (
             <Text accessibilityRole="alert" style={styles.error}>
@@ -428,7 +495,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   divider: { borderBottomWidth: 1, borderBottomColor: colors.divider },
-  areaName: { flex: 1, fontSize: 15, color: colors.ink },
+  areaName: { fontSize: 15, color: colors.ink },
+  areaNameButton: { flex: 1 },
+  renameArea: { gap: 10, paddingVertical: 12 },
+  renameButtons: { flexDirection: 'row', gap: 10 },
   addArea: { paddingVertical: 12 },
   addAreaText: {
     fontSize: 14,

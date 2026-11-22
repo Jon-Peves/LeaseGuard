@@ -16,6 +16,7 @@ import type {
 } from '../../navigation/types';
 import { colors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import { shortDay, slotLabel } from '../../utils/dates';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 type Props = CompositeScreenProps<
@@ -76,6 +77,8 @@ export default function TenantDashboardScreen({ navigation }: Props) {
     checkForInvite,
     baselineReviewed,
     movePhotos,
+    inspection,
+    error,
   } = useTenantDemo();
   const ownPhotoCount = Object.keys(movePhotos).length;
   const [checked, setChecked] = useState(false);
@@ -142,6 +145,91 @@ export default function TenantDashboardScreen({ navigation }: Props) {
         right={bell}
       />
 
+      {error ? (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {error}
+        </Text>
+      ) : null}
+
+      {inspection && inspection.status !== 'submitted' ? (
+        <View style={styles.moveIn}>
+          <View style={[styles.tag, styles.dueTag]}>
+            <Text style={[styles.tagText, styles.dueTagText]}>
+              {inspection.kind === 'remote'
+                ? `DUE ${shortDay(inspection.dueDate ?? '').toUpperCase()}`
+                : 'IN PERSON'}
+            </Text>
+          </View>
+          <Text style={styles.moveInTitle}>Routine inspection</Text>
+          <Text style={styles.moveInBody}>
+            {inspection.kind === 'remote'
+              ? `${inspection.areas.length} areas • about ${Math.max(
+                  5,
+                  inspection.areas.length * 2.5,
+                )} minutes. Photograph each area the way it looked at move-in.`
+              : inspection.status === 'awaiting-times'
+              ? `${
+                  unit.landlordName.split(' ')[0]
+                } wants to visit. Pick the times that work for you.`
+              : inspection.status === 'confirmed'
+              ? `Confirmed for ${slotLabel(
+                  inspection.slots?.find(
+                    slot => slot.id === inspection.confirmedSlot,
+                  ) ?? { date: '', time: '' },
+                )}.`
+              : inspection.status === 'times-declined'
+              ? `You said none of the times work. ${
+                  unit.landlordName.split(' ')[0]
+                } will propose new ones.`
+              : `Waiting for ${
+                  unit.landlordName.split(' ')[0]
+                } to confirm a time.`}
+          </Text>
+          {inspection.kind === 'remote' ? (
+            <ActionButton
+              title={
+                Object.keys(inspection.photos).length
+                  ? 'Continue inspection'
+                  : 'Start inspection'
+              }
+              compact
+              style={styles.moveInButton}
+              onPress={() => {
+                const next = inspection.areas.findIndex(
+                  area => !inspection.photos[area],
+                );
+                if (next === -1) navigation.navigate('TenantInspectionReview');
+                else
+                  navigation.navigate('TenantInspectionCapture', {
+                    step: next,
+                  });
+              }}
+            />
+          ) : inspection.status === 'awaiting-times' ||
+            inspection.status === 'times-sent' ? (
+            <ActionButton
+              title={
+                inspection.status === 'awaiting-times'
+                  ? 'Pick times'
+                  : 'Change my times'
+              }
+              compact
+              style={styles.moveInButton}
+              onPress={() => navigation.navigate('TenantPickTime')}
+            />
+          ) : null}
+        </View>
+      ) : null}
+      {inspection?.status === 'submitted' ? (
+        <View style={[styles.card, styles.activity]}>
+          <Text style={styles.activityTitle}>Inspection submitted</Text>
+          <Text style={styles.actionDetail}>
+            {`${inspection.submittedOn} • ${
+              unit.landlordName.split(' ')[0]
+            } will review the AI comparison`}
+          </Text>
+        </View>
+      ) : null}
       {!details?.baselineRecordedOn ? (
         <View style={[styles.moveIn, styles.moveInWaiting]}>
           <View style={styles.tag}>
@@ -277,6 +365,13 @@ export default function TenantDashboardScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  error: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.warnBg,
+    color: colors.warnText,
+    fontSize: 14,
+  },
   content: {
     paddingHorizontal: 24,
     paddingTop: 28,
@@ -311,6 +406,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     color: colors.brand,
   },
+  dueTag: { backgroundColor: '#FEF3C7' },
+  dueTagText: { color: colors.warnText },
   moveInWaiting: { borderWidth: 1, borderColor: colors.cardBorder },
   moveInTitle: {
     marginTop: 4,

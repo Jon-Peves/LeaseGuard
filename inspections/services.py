@@ -38,13 +38,14 @@ def prepare_image(image):
     return out.getvalue()
 
 
-def compare_images(baseline, current, room, area, landlord_notes=None, known_issues=None):
+def compare_images(baseline, current, room, area, landlord_notes=None, known_issues=None,
+                   tenant_notes=None):
     client = _get_client()
 
     contents = [
         types.Part.from_bytes(data=prepare_image(baseline), mime_type="image/jpeg"),
         types.Part.from_bytes(data=prepare_image(current), mime_type="image/jpeg"),
-        build_message(room, area, landlord_notes, known_issues),
+        build_message(room, area, landlord_notes, known_issues, tenant_notes),
     ]
 
     config = types.GenerateContentConfig(

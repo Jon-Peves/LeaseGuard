@@ -133,6 +133,11 @@ MIGRATION_MODULES = {
 
 
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
+# Photo storage for baselines and inspections (cloudinary://key:secret@cloud).
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '').strip()
+# Tests run the AI review inline instead of on a background thread.
+INSPECTIONS_AI_SYNC = False
+
 GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-3.5-flash-lite').strip() or 'gemini-3.5-flash-lite'
 
 

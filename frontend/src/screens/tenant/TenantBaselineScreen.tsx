@@ -37,6 +37,20 @@ export default function TenantBaselineScreen({ navigation }: Props) {
           />
         ))}
       </View>
+      {Object.keys(details.baselineNotes ?? {}).length ? (
+        <View style={styles.card}>
+          <Text
+            style={styles.cardTitle}
+          >{`Noted by ${landlordFirst} at move-in`}</Text>
+          {details.areas
+            .filter(area => details.baselineNotes?.[area])
+            .map(area => (
+              <Text key={area} style={styles.cardBody}>
+                {`${area}: ${details.baselineNotes?.[area]}`}
+              </Text>
+            ))}
+        </View>
+      ) : null}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>See something that isn't shown?</Text>
         <Text style={styles.cardBody}>

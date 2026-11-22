@@ -1,3 +1,4 @@
+import LoadingView from '../components/LoadingView';
 import UnitHistoryScreen from '../screens/tenant/UnitHistoryScreen';
 import NotificationsScreen from '../screens/shared/NotificationsScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -24,6 +25,11 @@ import TenantConsentScreen from '../screens/tenant/TenantConsentScreen';
 import TenantInvitePromptScreen from '../screens/tenant/TenantInvitePromptScreen';
 import TenantBaselineScreen from '../screens/tenant/TenantBaselineScreen';
 import TenantMovePhotosScreen from '../screens/tenant/TenantMovePhotosScreen';
+import TenantPickTimeScreen from '../screens/tenant/TenantPickTimeScreen';
+import TenantInspectionCaptureScreen from '../screens/tenant/TenantInspectionCaptureScreen';
+import TenantInspectionPhotoScreen from '../screens/tenant/TenantInspectionPhotoScreen';
+import TenantInspectionReviewScreen from '../screens/tenant/TenantInspectionReviewScreen';
+import TenantInspectionDoneScreen from '../screens/tenant/TenantInspectionDoneScreen';
 
 const Stack = createNativeStackNavigator<TenantStackParamList>();
 const Gate = createNativeStackNavigator<TenantGateStackParamList>();
@@ -59,6 +65,9 @@ export default function TenantNavigator() {
 
 function TenantStack() {
   const { stage } = useTenantDemo();
+  if (stage === 'loading') {
+    return <LoadingView />;
+  }
   if (stage !== 'ready') {
     return <TenantGate stage={stage} />;
   }
@@ -134,6 +143,31 @@ function TenantStack() {
         <Stack.Screen
           name="TenantMovePhotos"
           component={TenantMovePhotosScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="TenantPickTime"
+          component={TenantPickTimeScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="TenantInspectionCapture"
+          component={TenantInspectionCaptureScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="TenantInspectionPhoto"
+          component={TenantInspectionPhotoScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="TenantInspectionReview"
+          component={TenantInspectionReviewScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="TenantInspectionDone"
+          component={TenantInspectionDoneScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen

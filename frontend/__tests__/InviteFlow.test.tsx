@@ -12,7 +12,16 @@ import {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert, Image, Text, TextInput } from 'react-native';
 import { AuthProvider } from '../src/context/AuthContext';
-import { resetDemoStore } from '../src/data/demoStore';
+import {
+  currentInspection,
+  getLandlord,
+  resetDemoStore,
+  saveLandlord,
+} from '../src/data/demoStore';
+import {
+  photoCheck,
+  verdict,
+} from '../src/screens/landlord/InspectionResultsScreen';
 import RootNavigator from '../src/navigation/RootNavigator';
 import { launchCamera } from 'react-native-image-picker';
 import * as auth from '../src/services/authService';
@@ -75,6 +84,7 @@ const route = () => navigation.getCurrentRoute()?.name;
 async function press(label: string, scope: ReactTestInstance = app.root) {
   const target = scope
     .findAll(n => typeof n.props.onPress === 'function')
+    .reverse()
     .find(
       n =>
         n.props.accessibilityLabel === label ||
@@ -388,4 +398,209 @@ it('shares the landlord baseline photos with the tenant and saves their own phot
   await press('Looks right');
   expect(json()).toContain('Move-in baseline reviewed');
   expect(json()).toContain('You added 1 photo for your records');
+});
+
+async function landlordWithJoinedTenant() {
+  let shot = 0;
+  jest.mocked(launchCamera).mockImplementation(async () => ({
+    assets: [{ uri: `file://photo-${++shot}.jpg` }],
+  }));
+  await mount(landlord);
+  await acceptConsent();
+  await press('+ Add property');
+  await fill(app.root.findByType(AddPropertyScreen), {
+    'Property address': '44 Maple St, Hicksville, NY',
+    Unit: '2B',
+    Bedrooms: '2',
+    Bathrooms: '1',
+    'Tenant email': newTenant.email,
+  });
+  await press('Save & send invite');
+  await press('Record baseline');
+  await press('Start tour');
+  for (let i = 0; i < 4; i++) await press('Capture photo');
+  await press('Save baseline');
+  await logOut();
+  await signIn(newTenant);
+  await press('Accept invite');
+  await press('Continue');
+  await acceptConsent();
+  await logOut();
+  await signIn(landlord);
+}
+
+it('runs a remote inspection from scheduling to submission', async () => {
+  await landlordWithJoinedTenant();
+  await press('Schedule inspection');
+  await press('Schedule & notify Jordan');
+  expect(json()).toContain('Inspection due');
+  await logOut();
+
+  await signIn(newTenant);
+  expect(json()).toContain('Routine inspection');
+  await press('Start inspection');
+  expect(route()).toBe('TenantInspectionCapture');
+  expect(json()).toContain('Line up with your baseline photo');
+  expect(
+    app.root.findAll(n => n.props.accessibilityLabel === 'Baseline overlay')
+      .length,
+  ).toBeGreaterThan(0);
+  await press('Capture photo');
+  expect(route()).toBe('TenantInspectionPhoto');
+  expect(json()).toContain('Same view as your baseline?');
+  await press('Retake');
+  expect(route()).toBe('TenantInspectionCapture');
+  await press('Retake photo');
+  await press('Use this photo');
+  await press('Save & finish later');
+  expect(route()).toBe('Home');
+  await press('Continue inspection');
+  expect(json()).toContain('Step 2 of 4');
+  for (let i = 0; i < 3; i++) {
+    await press('Capture photo');
+    await press('Use this photo');
+  }
+  expect(route()).toBe('TenantInspectionReview');
+  expect(json()).toContain('4 of 4 areas done');
+  await press('Submit inspection');
+  expect(route()).toBe('TenantInspectionDone');
+  expect(json()).toContain('4 of 4 documented');
+  await press('Back to home');
+  expect(json()).toContain('Inspection submitted');
+  await logOut();
+
+  await signIn(landlord);
+  expect(json()).toContain('Jordan Lee submitted the inspection for Unit 2B');
+  expect(json()).toContain('Inspection submitted');
+  expect(json()).toContain("AI is checking Jordan's inspection photos");
+  await press('View AI review');
+  expect(json()).toContain('runs on the LeaseGuard server');
+});
+
+it('shows the AI review to the landlord, flagging photos that need a retake', async () => {
+  await landlordWithJoinedTenant();
+  await press('Schedule inspection');
+  await press('Schedule & notify Jordan');
+  await logOut();
+  await signIn(newTenant);
+  await press('Start inspection');
+  for (let i = 0; i < 4; i++) {
+    await press('Capture photo');
+    await press('Use this photo');
+  }
+  await press('Submit inspection');
+  await press('Back to home');
+  await logOut();
+
+  // Stand in for the server's Gemini results.
+  const snapshot = getLandlord(landlord.id)!;
+  const unit = snapshot.properties[0].units[0];
+  const inspection = currentInspection(unit)!;
+  const [first, second, third] = inspection.areas;
+  const base = {
+    photo_quality: 'good' as const,
+    same_area: true,
+    change_detected: false,
+    classification: 'none' as const,
+    severity: null,
+    confidence: 'high' as const,
+    obstructed_areas: null,
+    findings: [],
+    summary: 'Looks the same as move-in.',
+  };
+  inspection.ai = {
+    status: 'done',
+    results: {
+      [first]: base,
+      [second]: {
+        ...base,
+        change_detected: true,
+        classification: 'damage',
+        severity: 'medium',
+        summary: 'New crack near the faucet.',
+        findings: [
+          {
+            description: 'Crack along the left edge',
+            classification: 'damage',
+            pre_existing_worsened: false,
+          },
+        ],
+      },
+      [third]: { ...base, photo_quality: 'wrong_area', same_area: false },
+    },
+  };
+  inspection.notes = { [second]: 'Crack showed up last week' };
+  saveLandlord(landlord.id, snapshot);
+
+  await signIn(landlord);
+  expect(json()).toContain('AI review ready • 2 to check');
+  await press('View AI review');
+  expect(json()).toContain('1 area may have damage');
+  expect(json()).toContain('2 of 4 photos verified');
+  expect(json()).toContain('Possible damage • medium • high confidence');
+  expect(json()).toContain('Crack along the left edge');
+  expect(json()).toContain('Crack showed up last week');
+  expect(json()).toContain("Retake needed • doesn't match the move-in area");
+});
+
+it('labels AI photo checks', () => {
+  const result = {
+    photo_quality: 'too_dark' as const,
+    same_area: true,
+    change_detected: false,
+    classification: 'none' as const,
+    severity: null,
+    confidence: 'low' as const,
+    obstructed_areas: null,
+    findings: [],
+    summary: '',
+  };
+  expect(photoCheck(result)).toEqual({
+    ok: false,
+    label: 'Retake needed • too dark',
+  });
+  expect(verdict(result)).toBe('Not compared');
+  expect(verdict({ ...result, photo_quality: 'good' })).toBe('No change');
+});
+
+it('runs an in-person inspection: tenant picks times, landlord confirms one', async () => {
+  await landlordWithJoinedTenant();
+  await press('Schedule inspection');
+  await press('In person');
+  expect(json()).toContain('Times you can do it');
+  await press('Send times to Jordan');
+  expect(json()).toContain('Waiting for Jordan to pick times');
+  await logOut();
+
+  await signIn(newTenant);
+  await press('Pick times');
+  expect(route()).toBe('TenantPickTime');
+  const slots = app.root.findAll(
+    n => n.props.accessibilityRole === 'checkbox' && n.props.onPress,
+  );
+  const handlers = [...new Set(slots.map(n => n.props.onPress))];
+  await act(async () => handlers[1]());
+  await act(async () => handlers[2]());
+  expect(json()).toContain('2 times selected');
+  await press('Send availability');
+  expect(json()).toContain('Waiting for Marcus to confirm a time.');
+  await logOut();
+
+  await signIn(landlord);
+  expect(json()).toContain('Jordan sent their availability');
+  await press('Confirm a time');
+  expect(route()).toBe('ConfirmInspectionTime');
+  expect(json()).toContain('Jordan can make 2 of your 3 times.');
+  expect(json()).toContain("Jordan can't");
+  const confirm = app.root
+    .findAll(n => typeof n.props.accessibilityLabel === 'string')
+    .find(
+      n =>
+        /^Confirm \w{3}, /.test(n.props.accessibilityLabel) &&
+        typeof n.props.onPress === 'function',
+    );
+  await act(async () => confirm!.props.onPress());
+  expect(route()).toBe('Dashboard');
+  expect(json()).toContain('Inspection time confirmed.');
+  expect(json()).toContain('In-person inspection •');
 });

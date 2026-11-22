@@ -11,9 +11,9 @@ import {
 } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert, Image, Text, TextInput } from 'react-native';
-import { launchCamera } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { AuthProvider } from '../src/context/AuthContext';
-import { resetDemoStore } from '../src/data/demoStore';
+import { getLandlord, resetDemoStore } from '../src/data/demoStore';
 import RootNavigator from '../src/navigation/RootNavigator';
 import type { LandlordStackParamList } from '../src/navigation/types';
 import type { User } from '../src/types/user';
@@ -231,18 +231,53 @@ it('adds a property, invites the tenant, and walks the dashboard states', async 
   await press('Start tour');
   expect(json()).toContain('Step 1 of 4');
   expect(json()).toContain('No baseline yet');
+  await press('Rename "Living room wall"');
+  await fill(app.root, { 'Area name': 'Kitchen sink' });
+  expect(json()).toContain('Another area already has this name.');
+  await fill(app.root, { 'Area name': 'Front wall' });
+  await press('Save name');
+  expect(json()).toContain('Step 1 of 4 • Front wall');
+  await fill(app.root, { 'Move-in note (optional)': 'Scuff by the outlet' });
   for (let i = 0; i < 4; i++) await press('Capture photo');
   expect(navigation.getCurrentRoute()?.name).toBe('ReviewBaseline');
   expect(json()).toContain('4 of 4 areas done');
+  expect(json()).toContain('Front wall');
+  expect(
+    getLandlord(landlord.id)?.properties[0].units[0].baselineNotes,
+  ).toEqual({ 'Front wall': 'Scuff by the outlet' });
   await press('Retake Kitchen sink');
   expect(navigation.getCurrentRoute()?.name).toBe('BaselineCapture');
   await press('Retake photo');
   expect(navigation.getCurrentRoute()?.name).toBe('ReviewBaseline');
   expect(launchCamera).toHaveBeenCalledTimes(5);
+  jest.mocked(launchImageLibrary).mockResolvedValue({
+    assets: [{ uri: 'file://library-photo.jpg' }],
+  });
+  await press('Retake Kitchen sink');
+  await press('Choose from library');
+  expect(navigation.getCurrentRoute()?.name).toBe('ReviewBaseline');
+  expect(json()).toContain('file://library-photo.jpg');
   await press('Save baseline');
   expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
   expect(json()).toContain('Move-in baseline saved.');
   expect(json()).not.toContain('Next: record the move-in baseline');
+  const saved = getLandlord(landlord.id)!.properties[0];
+  await act(async () =>
+    navigation.navigate('EditUnit', {
+      propertyId: saved.id,
+      unitId: saved.units[0].id,
+    }),
+  );
+  await press('Rename Front wall');
+  await fill(app.root, { 'Rename Front wall': 'Entry wall' });
+  await press('Save name');
+  const renamed = getLandlord(landlord.id)!.properties[0].units[0];
+  expect(renamed.areas[0]).toBe('Entry wall');
+  expect(renamed.baselinePhotos?.['Entry wall']).toBeDefined();
+  expect(renamed.baselineNotes).toEqual({
+    'Entry wall': 'Scuff by the outlet',
+  });
+  await act(async () => navigation.goBack());
   await press('Schedule inspection');
   expect(navigation.getCurrentRoute()?.name).toBe('ScheduleInspection');
 });
@@ -291,39 +326,46 @@ it('saves unit edits back to the dashboard', async () => {
   expect(json()).toContain('Unit 2B');
   expect(json()).toContain('Unit saved.');
 });
-it('validates dates, remote areas, and distinct in-person demo behavior', async () => {
+it('validates the schedule form and schedules a remote inspection', async () => {
+  let shot = 0;
+  jest.mocked(launchCamera).mockImplementation(async () => ({
+    assets: [{ uri: `file://photo-${++shot}.jpg` }],
+  }));
   await mount();
-  await go('ScheduleInspection');
+  await addSampleProperty();
+  await press('Demo: simulate Alyssa joining');
+  await press('Record baseline');
+  await press('Start tour');
+  for (let i = 0; i < 4; i++) await press('Capture photo');
+  await press('Save baseline');
+  await press('Schedule inspection');
   const form = app.root.findByType(ScheduleInspectionScreen);
-  await fill(form, { 'Due date (YYYY-MM-DD)': '2027-02-30' });
-  await press('Preview demo inspection', form);
+  expect(json()).toContain('18 Cedar Ave • Unit 1A • Alyssa Patel');
+  await fill(form, { 'Due date': '2027-02-30' });
+  await press('Schedule & notify Alyssa', form);
   expect(json()).toContain('valid calendar date');
-  await fill(form, { 'Due date (YYYY-MM-DD)': '2000-01-01' });
-  await press('Preview demo inspection', form);
+  await fill(form, { 'Due date': '2000-01-01' });
+  await press('Schedule & notify Alyssa', form);
   expect(json()).toContain('today or a future date');
   const future = new Date();
   future.setDate(future.getDate() + 7);
-  await fill(form, { 'Due date (YYYY-MM-DD)': formatLocalDate(future) });
-  const areas = form.findAll(
-    n =>
-      n.props.accessibilityRole === 'checkbox' &&
-      typeof n.props.onPress === 'function',
-  );
-  // Composite/host duplicates share handlers; invoke each area only once.
-  const handlers = [...new Set(areas.map(n => n.props.onPress))];
-  await act(async () => handlers.forEach(fn => fn()));
-  await press('Preview demo inspection', form);
-  expect(json()).toContain('Pick at least one area');
-  expect(alert).not.toHaveBeenCalled();
-  await press('In person', form);
-  await press('Preview demo inspection', form);
-  expect(alert).toHaveBeenLastCalledWith(
-    'Demo inspection preview',
-    expect.stringContaining('no tenant was notified'),
-  );
-  expect(navigation.getCurrentRoute()?.name).toBe('ScheduleInspection');
-  await press('Back', form);
+  await fill(form, { 'Due date': formatLocalDate(future) });
+  for (const area of [
+    'Living room wall',
+    'Kitchen sink',
+    'Bathroom ceiling',
+    'Bedroom floor',
+  ])
+    await press(area, form);
+  await press('Schedule & notify Alyssa', form);
+  expect(json()).toContain('Pick at least one area.');
+  await press('Kitchen sink', form);
+  expect(json()).toContain('1 of 4 selected');
+  await press('Schedule & notify Alyssa', form);
   expect(navigation.getCurrentRoute()?.name).toBe('Dashboard');
+  expect(json()).toContain('Inspection scheduled.');
+  expect(json()).toContain('Inspection due');
+  expect(json()).not.toContain('Schedule inspection');
 });
 it('gives distinct AI demo decisions, opens History, and returns through the nested stack', async () => {
   await mount();

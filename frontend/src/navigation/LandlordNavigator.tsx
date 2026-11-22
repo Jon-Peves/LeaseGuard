@@ -4,6 +4,7 @@ import {
 } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import BottomNavigation from '../components/BottomNavigation';
+import LoadingView from '../components/LoadingView';
 import PrivacySecurityScreen from '../screens/shared/PrivacySecurityScreen';
 import SettingsScreen from '../screens/shared/SettingsScreen';
 import NotificationsScreen from '../screens/shared/NotificationsScreen';
@@ -16,6 +17,8 @@ import EditUnitScreen from '../screens/landlord/EditUnitScreen';
 import MoveInTourScreen from '../screens/landlord/MoveInTourScreen';
 import BaselineCaptureScreen from '../screens/landlord/BaselineCaptureScreen';
 import ReviewBaselineScreen from '../screens/landlord/ReviewBaselineScreen';
+import ConfirmInspectionTimeScreen from '../screens/landlord/ConfirmInspectionTimeScreen';
+import InspectionResultsScreen from '../screens/landlord/InspectionResultsScreen';
 import LandlordConsentScreen from '../screens/landlord/LandlordConsentScreen';
 import {
   LandlordDemoProvider,
@@ -60,6 +63,14 @@ function HomeStack() {
       <Stack.Screen name="MoveInTour" component={MoveInTourScreen} />
       <Stack.Screen name="BaselineCapture" component={BaselineCaptureScreen} />
       <Stack.Screen name="ReviewBaseline" component={ReviewBaselineScreen} />
+      <Stack.Screen
+        name="InspectionResults"
+        component={InspectionResultsScreen}
+      />
+      <Stack.Screen
+        name="ConfirmInspectionTime"
+        component={ConfirmInspectionTimeScreen}
+      />
     </Stack.Navigator>
   );
 }
@@ -121,7 +132,10 @@ function ConsentGate() {
 }
 
 function LandlordTabs() {
-  const { consented } = useLandlordDemo();
+  const { consented, loading } = useLandlordDemo();
+  if (loading) {
+    return <LoadingView />;
+  }
   if (!consented) {
     return <ConsentGate />;
   }
